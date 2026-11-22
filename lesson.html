@@ -52,6 +52,39 @@ code{background:var(--panel2);border:1px solid var(--border);border-radius:4px;p
 button{font:inherit;cursor:pointer;}
 
 /* ── 상단 바 ── */
+.m7-prev iframe{width:100%;height:640px;border:1px solid var(--border);border-radius:8px;background:#0d1017;}
+.m7-parts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:.6em 0;}
+.m7-parts>div{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:.45em .7em;font-size:.86rem;}
+.m7-parts b{display:block;color:var(--cyan);} .m7-parts span{color:var(--muted);}
+.m7-steps{display:flex;flex-direction:column;gap:10px;margin:.6em 0;}
+.m7-step{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px;}
+.m7-n{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.m7-step h4,.m7-theme h4{font-size:1rem;color:var(--accent2);margin:.2em 0 .4em;}
+.m7-flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:.6em 0;}
+.m7-fb{border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:.4em .6em;font-size:.84rem;font-weight:700;text-align:center;}
+.m7-fb small{display:block;font-weight:400;color:var(--muted);font-size:.74rem;}
+.m7-fb.orch{border-color:var(--accent);} .m7-fb.proto{border-color:var(--yellow);} .m7-fb.qa{border-color:var(--purple);}
+.m7-fb.fw{border-color:#f7a64f;} .m7-fb.tw{border-color:var(--cyan);} .m7-fb.web{border-color:#4fcf83;}
+.m7-ar{color:var(--muted);font-weight:700;}
+.m7-par{position:relative;display:flex;flex-direction:column;gap:4px;border:1px dashed var(--border);border-radius:8px;padding:16px 6px 6px;}
+.m7-parl{position:absolute;top:2px;left:8px;font-size:.7rem;color:var(--muted);}
+.m7-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start;}
+.m7-tree{background:#06070b;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.45;overflow:auto;margin:0;}
+.m7-theme{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px;min-width:0;}
+.m7-ol{padding-left:1.3em;} .m7-ol li{margin:.35em 0;font-size:.9rem;}
+.m7-eq{background:#06070b;border:1px solid var(--border);border-radius:8px;padding:.5em .8em;font-family:Consolas,monospace;font-size:.85rem;color:var(--cyan);margin:.4em 0;}
+.m7-sim{display:grid;grid-template-columns:minmax(0,3fr) minmax(220px,2fr);gap:12px;align-items:start;margin:.6em 0 1em;}
+.m7-sim canvas{width:100%;height:auto;border:1px solid var(--border);border-radius:8px;display:block;}
+.m7-simside{font-size:.88rem;}
+.m7-chk{display:block;margin:.3em 0;}
+.m7-states{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:.6em 0;}
+.m7-states [data-s]{border:1px solid var(--border);border-radius:6px;padding:.15em .5em;font-size:.82rem;}
+.m7-states [data-s].on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.m7-sa{color:var(--muted);font-size:.75rem;}
+.m7-read{font-family:Consolas,monospace;font-size:.82rem;color:var(--cyan);margin:.4em 0;}
+.m7-leg{list-style:none;padding:0;margin:.4em 0;} .m7-leg li{font-size:.82rem;margin:.15em 0;}
+.m7-leg i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+@media (max-width:700px){ .m7-sim{grid-template-columns:1fr;} .m7-prev iframe{height:520px;} .m7-ar{transform:rotate(90deg);} .m7-flow{flex-direction:column;align-items:stretch;} }
 .org{display:flex;align-items:center;gap:.9rem;padding:.4rem 18px;background:var(--panel2);border-bottom:1px solid var(--border);}
 .org img{height:56px;width:auto;flex:none;}
 .org-dept{font-size:1.15rem;font-weight:600;letter-spacing:.04em;color:var(--text);}
@@ -710,6 +743,406 @@ function initUnoClick(sec, prefix, infoId){
 }
 
 /* 1단계: 보드 */
+/* =====================================================================
+   M7 보조: 하네스로 디지털트윈 만들기(따라하기) · 더 해보기(자율주행·주행 맵)
+   근거: 원본 ../smars 프로젝트의 .claude/(에이전트 4·스킬 4), CLAUDE.md 변경 이력,
+         twin/ 펌웨어 runAuto(), 웹 콘솔 odometryStep()·mapAddObstacle()
+   ===================================================================== */
+function m7Code(id, text, file){
+  return `<div class="codebox">${file ? `<span class="file">${esc(file)}</span>` : ''}<button class="btn small copy" data-copy="${id}">복사</button><pre id="${id}">${esc(text)}</pre></div>`;
+}
+function m7Open(){
+  return `
+    <div class="box"><b>핵심:</b> 화면의 상태는 <b>로봇의 응답에서만</b> 바뀝니다. 디지털트윈은 '버튼을 누른 것'이 아니라 <b>'실물이 한 것'</b>을 보여 줍니다.</div>
+    <div class="row">
+      <a class="btn" href="twin/smars_console.html?sim=1" target="_blank" rel="noopener">시뮬레이션으로 열기 (로봇 없이)</a>
+      <a class="btn" href="twin/smars_console.html" target="_blank" rel="noopener">실물 연결로 열기</a>
+      <button class="btn" id="m7PrevBtn">이 페이지 안에서 미리 보기</button>
+    </div>
+    <div id="m7Prev" class="m7-prev" hidden></div>
+    <div class="m7-parts">
+      <div><b>① 3D 트윈</b><span>바퀴 회전, 부품 켜짐, 전방 물체 감지, 경로(파랑)·벽</span></div>
+      <div><b>② 조작 패널</b><span>D-pad / 조이스틱, 속도, 키보드</span></div>
+      <div><b>③ 주행 정보</b><span>이동 거리, 위치·방향, 벽 점 수, 보정</span></div>
+      <div><b>④ 연결</b><span>USB ${PINMAP.usb.baud} · 블루투스 ${PINMAP.bt.baud} · 시뮬레이션</span></div>
+      <div><b>⑤ 테스트 카드</b><span>모터·부저·초음파·라인·블루투스·로그</span></div>
+    </div>
+    <p class="muted" style="font-size:.88rem">실물 연결: 연결 방식 <b>USB 시리얼 / ${PINMAP.usb.baud}</b> → 연결. 블루투스는 <b>블루투스 COM / ${PINMAP.bt.baud}</b>. 펌웨어는 <code>twin/smars_firmware/smars_firmware.ino</code>(교사가 미리 업로드 권장).</p>`;
+}
+
+function m7Harness(){
+  const plug = `/plugin marketplace add revfactory/harness
+/plugin install harness@harness-marketplace
+/reload-plugins`;
+  const ask = `SMARS 로봇(Arduino UNO + L298P 모터 쉴드)을 웹페이지로 테스트하고 조종하고 싶어.
+
+[기능] 모터(왼쪽·오른쪽·전진·후진), 부저, 초음파, 블루투스 테스트.
+       USB 시리얼과 블루투스 연결/해지 버튼.
+[화면] 페이지 위쪽에 실제 로봇과 닮은 3D 모델(디지털트윈).
+       기능이 동작하면 그 부품이 켜지고, 모터가 돌면 바퀴가 돌고,
+       초음파가 물체를 감지하면 전방에 '물체 감지'와 거리를 표시.
+[하드웨어] 이 폴더의 검증된 스케치를 기준으로 해.
+       오른쪽 모터 DIR ${pin('motorR','DIR')}·PWM ${pin('motorR','PWM')}, 왼쪽 모터 DIR ${pin('motorL','DIR')}·PWM ${pin('motorL','PWM')}
+       초음파 Trig ${pin('ultra','Trig')}·Echo ${pin('ultra','Echo')}, 부저 ${pin('buzzer','신호')}(tone() 금지)
+       HC-05 TXD→${pin('bt','TXD→')}·RXD←${pin('bt','RXD←')} (${PINMAP.bt.baud}), USB ${PINMAP.usb.baud}
+[조건] 로봇 없이도 확인하도록 시뮬레이션 모드를 넣어줘.
+       화면은 로봇이 보낸 응답으로만 바뀌게 해줘.
+
+하네스를 구성해줘.`;
+  const run = `SMARS 테스트 웹페이지(웹 콘솔 + 3D 트윈 + 통합 펌웨어)를 만들어줘.
+끝나면 실행 방법과, 검증한 것 / 검증하지 못한 것(실물·업로드)을 나눠서 알려줘.`;
+  const tree = `smars/
+├─ CLAUDE.md          ← 언제 오케스트레이터를 부를지 + 변경 이력
+├─ HANDOFF.md         ← 인수 문서(현재 상태·미해결·다음 할 일)
+└─ .claude/
+   ├─ agents/         ← "누가" 일하나
+   │  ├─ smars-firmware-engineer.md
+   │  ├─ smars-twin-developer.md
+   │  ├─ smars-web-developer.md
+   │  └─ smars-qa.md
+   └─ skills/         ← "어떻게" 일하나
+      ├─ smars-orchestrator/   작업 순서
+      ├─ smars-protocol/       핀 표 · 명령/응답 약속
+      ├─ smars-twin-model/     3D 모델 · 상태 반영
+      └─ smars-web-console/    화면 구성 · 시뮬레이터`;
+  return `
+    <div class="box"><b>하네스</b> = AI 개발팀의 <b>설계도</b>입니다. AI 한 명에게 모두 맡기지 않고, <b>역할(에이전트)</b>과 <b>일하는 규칙(스킬)</b>을 파일로 만들어 두고 <b>정해진 순서(오케스트레이터)</b>대로 일하게 합니다. 지금 여는 웹 콘솔·펌웨어·3D 트윈도 이 방법으로 만들었습니다.</div>
+
+    <div class="m7-steps">
+      <div class="m7-step"><div class="m7-n">1</div><div>
+        <h4>준비: 폴더와 검증된 자료</h4>
+        <ul>
+          <li>Claude Code(터미널 또는 데스크톱 앱)를 설치하고, 새 폴더(예: <code>smars/</code>)에서 실행합니다.</li>
+          <li>폴더에 <b>실물로 확인한 스케치</b>(모터·초음파·부저·블루투스 테스트)를 넣어 둡니다. AI가 핀을 <b>추측하지 않고</b> 이 자료를 기준으로 삼게 하려는 것입니다.</li>
+        </ul></div></div>
+
+      <div class="m7-step"><div class="m7-n">2</div><div>
+        <h4>하네스 플러그인 설치 (한 번만)</h4>
+        ${m7Code('m7Plug', plug, 'Claude Code 입력창')}
+        <p class="muted" style="font-size:.85rem">설치되면 <code>harness</code>(하네스 구축)와 <code>harness:evolve</code>(회고·개선) 스킬이 생깁니다. 계정이나 PC가 바뀌면 다시 등록합니다.</p></div></div>
+
+      <div class="m7-step"><div class="m7-n">3</div><div>
+        <h4>만들고 싶은 것 + 하드웨어 사실을 적고 "하네스를 구성해줘"</h4>
+        ${m7Code('m7Ask', ask, '요청 예시')}
+        <p style="font-size:.9rem"><b>[기능] [화면] [하드웨어] [조건]</b>을 나눠 쓰는 것이 핵심입니다. 특히 핀·보율처럼 <b>틀리면 안 되는 사실</b>은 반드시 적습니다.</p></div></div>
+
+      <div class="m7-step"><div class="m7-n">4</div><div>
+        <h4>하네스가 설계한 팀을 확인하고 승인</h4>
+        <p style="font-size:.9rem">하네스는 작업을 분석해 팀 구성안을 보여 줍니다. SMARS에서는 아래처럼 만들어졌습니다.</p>
+        <div class="m7-flow">
+          <div class="m7-fb">사용자 요청</div><div class="m7-ar">→</div>
+          <div class="m7-fb orch">오케스트레이터<small>smars-orchestrator</small></div><div class="m7-ar">→</div>
+          <div class="m7-fb proto">① 약속 확인<small>smars-protocol<br>핀 표 · 명령/응답</small></div><div class="m7-ar">→</div>
+          <div class="m7-par">
+            <div class="m7-fb fw">펌웨어 엔지니어<small>smars_firmware.ino</small></div>
+            <div class="m7-fb tw">트윈 개발자<small>web/twin.js</small></div>
+            <div class="m7-fb web">웹 개발자<small>smars_console.html</small></div>
+            <span class="m7-parl">② 동시에 만들기</span>
+          </div><div class="m7-ar">→</div>
+          <div class="m7-fb qa">③ QA<small>경계면 교차 검사</small></div><div class="m7-ar">→</div>
+          <div class="m7-fb">④ 보고 +<small>HANDOFF.md</small></div>
+        </div>
+        <div class="m7-two">
+          <div><pre class="m7-tree">${esc(tree)}</pre></div>
+          <div>
+            <table><tr><th>에이전트</th><th>맡은 일</th></tr>
+              <tr><td>펌웨어 엔지니어</td><td>명령 한 줄을 받아 모터·부저·센서를 움직이고 응답</td></tr>
+              <tr><td>트윈 개발자</td><td>three.js 3D 모델, <code>setState(상태)</code>로 화면 반영</td></tr>
+              <tr><td>웹 개발자</td><td>Web Serial 연결, 테스트 카드, 시뮬레이터, 로그</td></tr>
+              <tr><td>QA</td><td>펌웨어 응답 ↔ 웹 해석, 웹 상태 ↔ 트윈 입력, 핀 ↔ 검증 스케치가 맞는지</td></tr>
+            </table>
+            <div class="box" style="font-size:.88rem"><b>왜 이렇게 나눴나?</b> 세 개발자는 서로 대화하지 않습니다. 모두 <b>smars-protocol(통신 약속)</b> 하나만 보고 <b>동시에</b> 만들고, 마지막에 QA가 <b>서로 맞물리는 곳</b>만 검사합니다.</div>
+          </div>
+        </div></div></div>
+
+      <div class="m7-step"><div class="m7-n">5</div><div>
+        <h4>만들기 실행</h4>
+        ${m7Code('m7Run', run, '요청 예시')}
+        <p style="font-size:.9rem">오케스트레이터가 ① 약속 확인 → ② 세 에이전트 동시 제작 → ③ QA → ④ 보고 순서로 진행합니다. QA에서 문제가 나오면 <b>그 부분 담당만</b> 다시 고칩니다.<br>
+        <span class="muted">예: 펌웨어가 거리를 <code>Distance: 23</code>으로 보내고 웹은 <code>DIST 23</code>을 기다림 → QA가 발견 → 펌웨어 에이전트만 다시 호출.</span></p></div></div>
+
+      <div class="m7-step"><div class="m7-n">6</div><div>
+        <h4>확인: 시뮬레이션 → 실물</h4>
+        <ol>
+          <li><code>smars_console.html?sim=1</code>로 로봇 없이 화면부터 확인(바퀴 회전, 감지 표시).</li>
+          <li>펌웨어를 Arduino IDE(또는 <code>arduino-cli</code>)로 업로드. 이때 웹 콘솔·시리얼 모니터는 닫습니다.</li>
+          <li>바퀴를 띄운 채 USB ${PINMAP.usb.baud}로 연결해 모터·부저·초음파를 하나씩 확인.</li>
+        </ol>
+        <p class="muted" style="font-size:.85rem">AI는 실물을 직접 볼 수 없습니다. "검증하지 못한 것"으로 보고된 항목은 <b>사람이 확인</b>합니다.</p></div></div>
+
+      <div class="m7-step"><div class="m7-n">7</div><div>
+        <h4>기능을 하나씩 더하기 (실제 진행 기록)</h4>
+        <table><tr><th>요청</th><th>고친 순서</th></tr>
+          <tr><td>부저 기본 핀을 ${pin('buzzer','신호')}로</td><td>약속 → 펌웨어 → 웹</td></tr>
+          <tr><td>USB 115200 → ${PINMAP.usb.baud} (PC의 CH340 드라이버 오류)</td><td>약속 → 펌웨어 → 웹</td></tr>
+          <tr><td>이동 거리로 주행 맵 그리기 → 3D 트윈에 통합</td><td>웹 → 트윈 (펌웨어는 그대로)</td></tr>
+          <tr><td>D-pad / 조이스틱 두 가지 조작, 3D 옆에 조작 패널</td><td>웹만</td></tr>
+          <tr><td>적외선 라인센서(${pin('line','DO')}) 추가</td><td>약속 → 펌웨어 → 웹 → 트윈</td></tr>
+        </table>
+        <p style="font-size:.9rem">새 명령이 필요한 기능은 <b>약속(smars-protocol)부터</b> 고칩니다. 화면만 바뀌는 기능은 웹·트윈만 고칩니다. 하네스가 이 판단을 대신 정리해 줍니다.</p></div></div>
+
+      <div class="m7-step"><div class="m7-n">8</div><div>
+        <h4>회고하고 이어 가기</h4>
+        <ul>
+          <li>작업이 끝날 때마다 <code>HANDOFF.md</code>를 갱신하게 해 두면, 다른 날·다른 계정에서도 이어서 작업할 수 있습니다.</li>
+          <li>"하네스 회고해줘"(<code>harness:evolve</code>)로 겪은 문제를 규칙에 반영합니다. 예: "CH340에서 115200 오류 → 통신 약속에 ${PINMAP.usb.baud} 고정".</li>
+        </ul></div></div>
+    </div>
+    <div class="box"><b>참고:</b> 이 수업 교재(lesson.html)도 같은 방법으로 만들었습니다. 오케스트레이터 1개 + 에이전트 4개(예제 스케치·교재 페이지·QA·트윈 미션)와 같은 통신 약속(smars-protocol)을 씁니다.</div>`;
+}
+
+function m7More(){
+  const autoProto = `AUTO <0|1>   -> OK AUTO <0|1>
+  · 켜면 스스로 전진하다 장애물을 피함
+  · MOVE/M(직접 조종)이 오면 AUTO 끔 -> EVT AUTOOFF
+  · 3초 동안 아무 명령이 없으면 멈춤(안전)
+STAT -> ... auto=<0|1> ...`;
+  const autoCode = `// 상태 기계: delay() 없이 millis()로 시간을 잰다
+void runAuto(unsigned long now) {
+  switch (autoState) {
+    case AUTO_FWD:                                   // 전진
+      if (lastDist >= 0 && lastDist <= AUTO_OBSTACLE_CM) {   // 20cm 이내
+        setMotors(-AUTO_SPEED, -AUTO_SPEED);         // 후진 시작
+        autoState = AUTO_BACK; autoStateAt = now;
+      } else if (curL != AUTO_SPEED || curR != AUTO_SPEED) {
+        setMotors(AUTO_SPEED, AUTO_SPEED);           // 60%로 전진
+      }
+      break;
+    case AUTO_BACK:                                  // 0.4초 후진
+      if (now - autoStateAt >= AUTO_BACK_MS) {
+        setMotors(AUTO_TURN_SPEED, -AUTO_TURN_SPEED);   // 제자리 우회전
+        autoState = AUTO_TURN; autoStateAt = now;
+      }
+      break;
+    case AUTO_TURN:                                  // 0.45초 회전
+      if (now - autoStateAt >= AUTO_TURN_MS) {
+        autoState = AUTO_FWD; autoStateAt = now;     // 다시 전진
+      }
+      break;
+  }
+}`;
+  const autoAsk = `장애물 회피 자율주행(AUTO) 모드를 추가해줘.
+- 약속: AUTO 1 / AUTO 0, 응답 OK AUTO. 직접 조종(MOVE)이 오면 자동으로 끄고 EVT AUTOOFF.
+- 펌웨어: 60% 전진 → 초음파 20cm 이내면 0.4초 후진 → 0.45초 제자리 우회전 → 다시 전진.
+  delay() 없이 millis() 상태 기계로. 3초 동안 명령이 없으면 정지.
+- 웹: AUTO 켜기/끄기 버튼, EVT 로그 표시. 시뮬레이터에서도 동작.
+- 트윈: 응답으로 받은 바퀴 출력대로만 표시.
+약속(smars-protocol)부터 고치고, 끝나면 QA로 경계면을 확인해줘.`;
+  const odoCode = `// 추측 항법: 바퀴 출력(%) × 시간 × 보정값으로 위치를 적분
+function odometryStep(pose, left, right, dt, cal) {
+  const db = cal.deadband ?? 25;                 // 이 출력 이하는 안 움직인다고 봄
+  const eff = p => (Math.abs(p) <= db ? 0 : p);
+  const vL = eff(left)  / 100 * cal.v100;        // cm/s (v100 = 100%일 때 속도)
+  const vR = eff(right) / 100 * cal.v100;
+  const v = (vL + vR) / 2;                       // 앞으로 가는 속도
+  const w = (vR - vL) / cal.w;                   // 도는 속도(rad/s), w = 궤도 간격
+  const thMid = pose.th + w * dt / 2;
+  return { x: pose.x + v * Math.cos(thMid) * dt,
+           y: pose.y + v * Math.sin(thMid) * dt,
+           th: pose.th + w * dt };
+}
+// 초음파 거리(DIST)를 받으면: 지금 위치에서 바라보는 방향으로 cm 앞에 벽 점
+function mapAddObstacle(cm) {
+  const o = { x: pose.x + cm * Math.cos(pose.th),
+              y: pose.y + cm * Math.sin(pose.th) };
+  twin.addObstacle(o);                           // 3D 트윈에 벽 블록
+}`;
+  const mapAsk = `웹 콘솔에서 이동한 거리를 계산해서 주행 맵을 그려줘.
+- 엔코더가 없으니 로봇이 응답한 바퀴 출력 × 시간 × 보정값(100% 속도, 궤도 간격)으로 위치를 추정(추측 항법).
+- 위치 계산은 웹 한 곳에서만 하고, 트윈은 받은 위치를 표시만.
+- 3D 트윈 바닥에 지나간 경로(파랑)를 그리고, 초음파 거리를 받을 때마다 앞쪽 그 지점에 벽 블록을 쌓아줘.
+- 원점 재설정, 벽 지우기, 전체 보기, 로봇 따라가기, PNG 저장, 보정값 입력.
+펌웨어 약속은 바꾸지 말고(기존 응답만 사용) 웹과 트윈만 고쳐줘.`;
+  return `
+    <p style="font-size:.92rem">두 기능 모두 웹 콘솔에 이미 들어 있습니다. 아래 <b>미니 시뮬레이터</b>로 원리를 먼저 보고, 하네스에 어떻게 요청해 만들었는지 따라가 봅니다.</p>
+    <div class="m7-sim">
+      <canvas id="m7Cv" width="900" height="600" aria-label="장애물 회피와 주행 맵 2D 시뮬레이션"></canvas>
+      <div class="m7-simside">
+        <div class="row">
+          <button class="btn" id="m7Go">▶ 자율주행 시작</button>
+          <button class="btn" id="m7Reset">처음으로</button>
+        </div>
+        <label class="m7-chk"><input type="checkbox" id="m7Slip"> 궤도 미끄러짐(오차) 켜기</label>
+        <label class="m7-chk"><input type="checkbox" id="m7Fast" checked> 4배속</label>
+        <div class="m7-states">
+          <span data-s="FWD">전진 60%</span><span class="m7-sa">→ 20cm 이내 →</span>
+          <span data-s="BACK">후진 0.4초</span><span class="m7-sa">→</span>
+          <span data-s="TURN">우회전 0.45초</span><span class="m7-sa">→ 다시 전진</span>
+        </div>
+        <div class="m7-read" id="m7Read">거리 — · 이동 0 cm · 벽 점 0</div>
+        <ul class="m7-leg">
+          <li><i style="background:#8b93a7"></i>실제 로봇·장애물</li>
+          <li><i style="background:#4f8ef7"></i>웹이 계산한 위치·경로</li>
+          <li><i style="background:#4fd1e0"></i>초음파 빔</li>
+          <li><i style="background:#f7a64f"></i>감지 지점에 쌓인 벽</li>
+        </ul>
+        <p class="muted" style="font-size:.8rem">수치는 펌웨어(<code>AUTO_SPEED 60</code>, <code>AUTO_OBSTACLE_CM 20</code>, 후진 400ms, 회전 450ms)와 웹 콘솔 보정 기본값(100%=20cm/s, 궤도 간격 9)을 그대로 썼습니다. 실물과는 차이가 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="m7-two">
+      <div class="m7-theme">
+        <h4>A. 장애물 회피 자율주행 <code>AUTO 1</code></h4>
+        <p style="font-size:.9rem">판단은 <b>로봇(펌웨어)</b>이 합니다. 무선이 끊겨도 스스로 피해야 하기 때문입니다. 웹은 켜기/끄기와 결과 표시만 합니다.</p>
+        <ol class="m7-ol">
+          <li><b>약속</b>: 새 명령 <code>AUTO</code>와 이벤트 <code>EVT AUTOOFF</code>를 smars-protocol에 추가
+            ${m7Code('m7AutoProto', autoProto, 'smars-protocol')}</li>
+          <li><b>펌웨어</b>: <code>runAuto()</code> 상태 기계 (60ms마다 초음파 측정)
+            <details><summary>코드 보기 (twin/smars_firmware.ino 발췌)</summary>${m7Code('m7AutoCode', autoCode, 'smars_firmware.ino')}</details></li>
+          <li><b>웹</b>: "장애물 회피(AUTO) 켜기" 버튼, <code>EVT AUTOOFF</code> 로그, 시뮬레이터에 같은 동작</li>
+          <li><b>트윈</b>: 바꿀 것 없음. 로봇이 보낸 바퀴 출력대로 3D가 움직입니다.</li>
+          <li><b>QA</b>: 약속 ↔ 펌웨어 응답 ↔ 웹 해석이 맞는지</li>
+        </ol>
+        <details><summary>하네스에 보낸 요청 예시</summary>${m7Code('m7AutoAsk', autoAsk)}</details>
+        <p class="muted" style="font-size:.85rem">더 해보기: 회전 방향을 번갈아 바꾸기, 막다른 곳에서 크게 돌기, 라인센서와 합쳐 책상 끝에서 멈추기.</p>
+      </div>
+      <div class="m7-theme">
+        <h4>B. 주행 맵 (추측 항법 + 초음파 벽)</h4>
+        <p style="font-size:.9rem">SMARS에는 바퀴 회전수 센서(엔코더)가 없습니다. 그래서 <b>"얼마나 세게 × 얼마나 오래"</b> 돌렸는지로 위치를 <b>추측</b>합니다.</p>
+        <div class="m7-eq">v = (v<sub>L</sub> + v<sub>R</sub>) ÷ 2 &nbsp;·&nbsp; ω = (v<sub>R</sub> − v<sub>L</sub>) ÷ 궤도 간격<br>x += v·cos θ·Δt &nbsp;·&nbsp; y += v·sin θ·Δt &nbsp;·&nbsp; θ += ω·Δt</div>
+        <ol class="m7-ol">
+          <li><b>약속</b>: 바꿀 것 없음. 이미 있는 응답(바퀴 출력 <code>OK M</code>, 거리 <code>DIST</code>)만 씁니다.</li>
+          <li><b>펌웨어</b>: 바꿀 것 없음.</li>
+          <li><b>웹</b>: <code>odometryStep()</code>으로 50ms마다 위치 계산, <code>DIST</code>마다 앞쪽 지점에 벽
+            <details><summary>코드 보기 (twin/smars_console.html 요약 발췌)</summary>${m7Code('m7OdoCode', odoCode, 'smars_console.html')}</details></li>
+          <li><b>트윈</b>: <code>addPathPoint()</code>·<code>addObstacle()</code> 추가(바닥 경로, 벽 블록). 위치 계산은 하지 않고 표시만.</li>
+          <li><b>QA</b>: 웹이 넘긴 위치·벽 ↔ 트윈 API가 맞는지</li>
+        </ol>
+        <details><summary>하네스에 보낸 요청 예시</summary>${m7Code('m7MapAsk', mapAsk)}</details>
+        <p class="muted" style="font-size:.85rem"><b>한계:</b> 궤도가 미끄러지면 오차가 쌓여 벽도 어긋납니다(위 시뮬레이터에서 "미끄러짐"을 켜 보세요). 실물에서는 1초 전진·1초 회전을 재서 보정값을 맞춥니다.</p>
+      </div>
+    </div>
+    <div class="box"><b>비교해 보기:</b> 자율주행은 <b>약속·펌웨어·웹</b>을 모두 고쳤고, 주행 맵은 <b>웹·트윈</b>만 고쳤습니다. 기능을 요청하기 전에 "누가 판단하고, 누가 계산하고, 누가 보여 주나"를 먼저 정하면 하네스가 고칠 곳을 정확히 고릅니다.</div>`;
+}
+
+function initM7(sec){
+  /* 웹 콘솔 미리 보기(필요할 때만 iframe 생성: 3D가 무거우므로) */
+  const pb = sec.querySelector('#m7PrevBtn'), pv = sec.querySelector('#m7Prev');
+  if (pb && pv) pb.onclick = () => {
+    if (pv.hidden){
+      if (!pv.firstChild) pv.innerHTML = '<iframe src="twin/smars_console.html?sim=1" title="SMARS 웹 콘솔 미리 보기 (시뮬레이션)" loading="lazy"></iframe>';
+      pv.hidden = false; pb.textContent = '미리 보기 닫기';
+    } else { pv.hidden = true; pv.innerHTML = ''; pb.textContent = '이 페이지 안에서 미리 보기'; }
+  };
+  initM7Sim(sec);
+}
+
+/* 2D 미니 시뮬레이터: 펌웨어 runAuto() 상태 기계 + 웹 odometryStep() 추측 항법 */
+function initM7Sim(sec){
+  const cv = sec.querySelector('#m7Cv'); if (!cv) return;
+  const g = cv.getContext('2d');
+  const ROOM = { w:300, h:200 };                       // cm
+  const BOX = [ {x:110,y:55,w:35,h:60}, {x:215,y:125,w:45,h:30}, {x:45,y:135,w:28,h:28}, {x:215,y:20,w:20,h:40} ];
+  const SPEED = 60, TURN = 70, OBST = 20, BACK_MS = 400, TURN_MS = 450, SENSE_MS = 60;
+  const CAL = { v100:20, w:9, deadband:25 };
+  const R = 7;                                          // 로봇 반지름(충돌용, cm)
+  let run = false, raf = 0, last = 0;
+  let S;
+  function reset(){
+    S = { real:{x:30,y:40,th:0.35}, est:{x:30,y:40,th:0.35}, L:0, R:0, st:'FWD', at:0, t:0,
+          senseAt:0, dist:-1, path:[{x:30,y:40}], walls:[], moved:0 };
+    draw();
+  }
+  function inBox(x,y,pad){
+    if (x < pad || y < pad || x > ROOM.w - pad || y > ROOM.h - pad) return true;
+    return BOX.some(b => x > b.x - pad && x < b.x + b.w + pad && y > b.y - pad && y < b.y + b.h + pad);
+  }
+  function ray(p){                                      // 초음파: 앞쪽 센서에서 직선으로 1cm씩
+    const sx = p.x + 6*Math.cos(p.th), sy = p.y + 6*Math.sin(p.th);
+    for (let d = 1; d <= 250; d++){
+      if (inBox(sx + d*Math.cos(p.th), sy + d*Math.sin(p.th), 0)) return d;
+    }
+    return -1;
+  }
+  function odo(p, l, r, dt, slip){                    // twin/smars_console.html의 odometryStep과 같은 식
+    const eff = v => (Math.abs(v) <= CAL.deadband ? 0 : v);
+    const vL = eff(l)/100*CAL.v100*(slip ? 0.96 : 1), vR = eff(r)/100*CAL.v100;
+    const v = (vL+vR)/2, w = (vR-vL)/CAL.w, thM = p.th + w*dt/2;
+    return { x:p.x + v*Math.cos(thM)*dt, y:p.y + v*Math.sin(thM)*dt, th:p.th + w*dt };
+  }
+  function setM(l, r){ S.L = l; S.R = r; }
+  function step(dtMs){
+    S.t += dtMs;
+    const slip = sec.querySelector('#m7Slip').checked;
+    if (S.t - S.senseAt >= SENSE_MS){                   // 60ms마다 측정 → 웹에선 DIST 응답
+      S.senseAt = S.t; S.dist = ray(S.real);
+      if (S.dist >= 0 && S.dist <= 120){
+        const e = S.est;
+        S.walls.push({ x:e.x + (S.dist+6)*Math.cos(e.th), y:e.y + (S.dist+6)*Math.sin(e.th) });
+        if (S.walls.length > 600) S.walls.shift();
+      }
+    }
+    switch (S.st){                                      // 펌웨어 runAuto()
+      case 'FWD':
+        if (S.dist >= 0 && S.dist <= OBST){ setM(-SPEED,-SPEED); S.st='BACK'; S.at=S.t; }
+        else setM(SPEED, SPEED);
+        break;
+      case 'BACK': if (S.t - S.at >= BACK_MS){ setM(TURN,-TURN); S.st='TURN'; S.at=S.t; } break;
+      case 'TURN': if (S.t - S.at >= TURN_MS){ S.st='FWD'; S.at=S.t; } break;
+    }
+    const dt = dtMs/1000;
+    const nr = odo(S.real, S.L, S.R, dt, slip);         // 실제 움직임(미끄러짐 포함)
+    if (!inBox(nr.x, nr.y, R)) S.real = nr;
+    else if (S.st === 'FWD'){ setM(-SPEED,-SPEED); S.st='BACK'; S.at=S.t; }   // 옆면이 닿으면 후진(데모용)
+    else S.real.th = nr.th;
+    const ne = odo(S.est, S.L, S.R, dt, false);         // 웹이 계산한 위치(미끄러짐 모름)
+    S.moved += Math.hypot(ne.x - S.est.x, ne.y - S.est.y);
+    S.est = ne;
+    const lp = S.path[S.path.length-1];
+    if (Math.hypot(ne.x-lp.x, ne.y-lp.y) >= 0.5){ S.path.push({x:ne.x,y:ne.y}); if (S.path.length > 6000) S.path.shift(); }
+  }
+  function draw(){
+    const W = cv.width, H = cv.height, k = W/ROOM.w;
+    const X = x => x*k, Y = y => H - y*k;
+    g.fillStyle = '#0d1017'; g.fillRect(0,0,W,H);
+    g.strokeStyle = '#1d2330'; g.lineWidth = 1;
+    for (let x = 0; x <= ROOM.w; x += 25){ g.beginPath(); g.moveTo(X(x),0); g.lineTo(X(x),H); g.stroke(); }
+    for (let y = 0; y <= ROOM.h; y += 25){ g.beginPath(); g.moveTo(0,Y(y)); g.lineTo(W,Y(y)); g.stroke(); }
+    g.strokeStyle = '#8b93a7'; g.lineWidth = 4; g.strokeRect(2,2,W-4,H-4);
+    g.fillStyle = '#3a4152'; BOX.forEach(b => g.fillRect(X(b.x), Y(b.y+b.h), b.w*k, b.h*k));
+    g.fillStyle = '#f7a64f'; S.walls.forEach(w => g.fillRect(X(w.x)-3, Y(w.y)-3, 6, 6));
+    g.strokeStyle = '#4f8ef7'; g.lineWidth = 2.5; g.beginPath();
+    S.path.forEach((p,i) => i ? g.lineTo(X(p.x),Y(p.y)) : g.moveTo(X(p.x),Y(p.y))); g.stroke();
+    const r = S.real;
+    if (S.dist >= 0){
+      g.strokeStyle = 'rgba(79,209,224,.8)'; g.lineWidth = 2; g.setLineDash([6,5]); g.beginPath();
+      g.moveTo(X(r.x+6*Math.cos(r.th)), Y(r.y+6*Math.sin(r.th)));
+      g.lineTo(X(r.x+(6+S.dist)*Math.cos(r.th)), Y(r.y+(6+S.dist)*Math.sin(r.th))); g.stroke(); g.setLineDash([]);
+    }
+    const bot = (p, fill, stroke) => {
+      g.save(); g.translate(X(p.x), Y(p.y)); g.rotate(-p.th);
+      if (fill){ g.fillStyle = fill; g.fillRect(-7*k,-6*k,14*k,12*k); g.fillStyle = '#4fd1e0'; g.fillRect(5*k,-3*k,2.5*k,6*k); }
+      if (stroke){ g.strokeStyle = stroke; g.lineWidth = 2; g.setLineDash([4,3]); g.strokeRect(-7*k,-6*k,14*k,12*k); g.setLineDash([]); }
+      g.restore();
+    };
+    bot(r, '#8b93a7', null);
+    bot(S.est, null, '#4f8ef7');
+    g.fillStyle = '#8b93a7'; g.font = `${Math.round(13*W/900)}px sans-serif`;
+    g.fillText('방 3m × 2m · 칸 25cm', 10, H - 10);
+    sec.querySelectorAll('.m7-states [data-s]').forEach(e => e.classList.toggle('on', run && e.dataset.s === S.st));
+    sec.querySelector('#m7Read').textContent =
+      `거리 ${S.dist < 0 ? '감지 없음' : S.dist + ' cm'} · 이동 ${S.moved.toFixed(0)} cm · 벽 점 ${S.walls.length}` +
+      (sec.querySelector('#m7Slip').checked ? ` · 실제와 계산 위치 차이 ${Math.hypot(S.real.x-S.est.x, S.real.y-S.est.y).toFixed(0)} cm` : '');
+  }
+  function loop(ts){
+    if (!run) return;
+    if (!document.body.contains(cv)){ run = false; return; }
+    const el = Math.min(100, ts - (last || ts)); last = ts;
+    const n = sec.querySelector('#m7Fast').checked ? 4 : 1;
+    for (let i = 0; i < n; i++){ for (let t = 0; t < el; t += 10) step(Math.min(10, el - t)); }
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+  const go = sec.querySelector('#m7Go');
+  go.onclick = () => {
+    run = !run; go.textContent = run ? '❚❚ 멈춤 (AUTO 0)' : '▶ 자율주행 시작';
+    if (run){ last = 0; raf = requestAnimationFrame(loop); } else { cancelAnimationFrame(raf); setM(0,0); draw(); }
+  };
+  sec.querySelector('#m7Reset').onclick = () => { reset(); };
+  sec.querySelector('#m7Slip').onchange = () => draw();
+  reset();
+}
+
 function m1Step1(){
   return `<div class="ia"><div>${unoSVG('s1')}<div class="status" id="s1Info">보드의 부분(헤더, USB, 칩, LED…)을 눌러 보세요.</div></div>
     <div class="explain"><ul>
@@ -2226,14 +2659,9 @@ const LESSON = {
     goal: '시뮬레이션 → USB 실물 → 블루투스 순서로 디지털트윈을 써 보고, 바이브코딩으로 기능 하나를 더한다.',
     topWarn: `<b>USB와 블루투스를 동시에 쓰지 않습니다.</b> 블루투스로 바꿀 때는 USB 연결을 먼저 해지합니다. 펌웨어를 업로드할 때는 <b>웹 콘솔·시리얼 모니터(이 페이지 아래 미니 모니터 포함)를 모두 닫습니다.</b>`,
     custom: [
-      { title:'① 디지털트윈 열기', wide:true, html:`
-        <div class="box"><b>핵심:</b> 화면의 상태는 <b>로봇의 응답에서만</b> 바뀝니다. 디지털트윈은 '버튼을 누른 것'이 아니라 <b>'실물이 한 것'</b>을 보여 줍니다.</div>
-        <div class="row">
-          <a class="btn" href="twin/smars_console.html?sim=1" target="_blank" rel="noopener">시뮬레이션으로 열기 (로봇 없이)</a>
-          <a class="btn" href="twin/smars_console.html" target="_blank" rel="noopener">실물 연결로 열기</a>
-        </div>
-        <p class="muted" style="font-size:.88rem">실물 연결: 연결 방식 <b>USB 시리얼 / ${PINMAP.usb.baud}</b> → 연결. 블루투스는 <b>블루투스 COM / ${PINMAP.bt.baud}</b>. 펌웨어는 <code>twin/smars_firmware/smars_firmware.ino</code>(교사가 미리 업로드 권장).</p>` },
-      { title:'② 웹 콘솔이 쓰는 주요 명령', wide:true, html:`
+      { title:'① 디지털트윈 열기', wide:true, html: m7Open() },
+      { title:'② 하네스로 디지털트윈 만들기 (따라하기)', wide:true, html: m7Harness() },
+      { title:'③ 웹 콘솔이 쓰는 주요 명령', wide:true, html:`
         <p style="font-size:.9rem">콘솔 버튼은 아래 같은 글자 한 줄을 로봇에 보냅니다(줄 끝 <code>\\n</code>). 로봇은 응답으로 상태를 알려 줍니다.</p>
         <table><tr><th>명령</th><th>뜻</th><th>응답 (예)</th></tr>
           <tr><td class="pin">PING</td><td>링크 확인</td><td class="pin">PONG</td></tr>
@@ -2247,7 +2675,7 @@ const LESSON = {
           <tr><td class="pin">STAT</td><td>현재 상태</td><td class="pin long">STAT l=0 r=0 buz=0 dist=23 safe=15 auto=0 usw=0 line=1 lnw=0</td></tr>
         </table>
         <p class="muted" style="font-size:.82rem">기준: smars-protocol 명령표. 펌웨어를 올린 로봇이면 아래 미니 모니터(${PINMAP.usb.baud})에서 직접 보내 볼 수도 있습니다(웹 콘솔과 동시에는 안 됨).</p>` },
-      { title:'③ 바이브코딩 미션 (팀별 1개)', wide:true, html:`
+      { title:'④ 바이브코딩 미션 (팀별 1개)', wide:true, html:`
         <table><tr><th>난이도</th><th>미션</th><th>고치는 모듈</th><th>확인 방법</th></tr>
           <tr><td>쉬움</td><td>부저 카드에 '후진 경고음' 버튼(후진 중 0.3초 간격 삑)</td><td>웹만</td><td>후진 시 소리 + 3D 부저 발광</td></tr>
           <tr><td>쉬움</td><td>거리에 따라 3D 감지 콘 색 3단계(초록·노랑·빨강)</td><td>트윈만</td><td>손을 가까이하며 색 변화</td></tr>
@@ -2256,14 +2684,10 @@ const LESSON = {
         </table>
         <div class="box"><b>새 명령이 필요한 미션은 smars-protocol(통신 약속)부터</b> 고칩니다. 약속이 어긋나면 웹이 <b>조용히 실패</b>합니다 — 프로그램끼리의 '인터페이스 약속'이 왜 중요한지 보여 주는 사례입니다.</div>
         <p class="muted" style="font-size:.88rem">요청은 교사의 AI 화면에서 합니다(M0 운영 방식).</p>` },
-      { title:'④ 더 해보기', wide:true, html:`
-        <details><summary>펼치기: 장애물 회피 자율주행 · 주행 맵</summary>
-          <ul>
-            <li><b>장애물 회피(AUTO 1)</b>: 콘솔의 "장애물 회피(AUTO) 켜기" 버튼(명령 <code>AUTO 1</code>). 로봇이 초음파로 앞을 보며 스스로 피합니다. 바닥에서만, 끌 때는 <code>AUTO 0</code>. 이동 명령(<code>MOVE</code>)을 보내도 AUTO가 꺼집니다.</li>
-            <li><b>주행 맵</b>: 실물로 천천히 움직이며 3D 화면에 <b>경로(파랑)</b>와 초음파로 감지한 <b>벽</b>이 쌓이는 것을 관찰합니다. 시뮬레이션에서 본 것과 비교해 보세요.</li>
-          </ul></details>` },
+      { title:'⑤ 더 해보기: 장애물 회피 자율주행 · 주행 맵', wide:true, html: m7More() },
     ],
     quick: ['PING','STAT','US','LINE','BUZ 1 200'],
+    principle: { init: initM7 },
     quickNote: '<b>통합 펌웨어(fw=3)가 올라간 로봇에서만 동작합니다.</b> M2 등 다른 예제가 남아 있으면 <code>LINE</code>의 L(좌회전), <code>BUZ</code>의 B(후진)로 읽혀 바퀴가 계속 돌 수 있습니다. 먼저 <code>PING</code> → <code>PONG</code>이 오는지 확인하세요.',
     checklist: [
       '시뮬레이션(?sim=1): D-pad·조이스틱으로 3D 바퀴가 돌고, 경로(파랑)와 가상 장애물 앞 벽이 쌓이는 것을 확인했다',
