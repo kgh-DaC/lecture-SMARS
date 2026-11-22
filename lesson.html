@@ -52,6 +52,10 @@ code{background:var(--panel2);border:1px solid var(--border);border-radius:4px;p
 button{font:inherit;cursor:pointer;}
 
 /* ── 상단 바 ── */
+.org{display:flex;align-items:center;gap:.9rem;padding:.4rem 18px;background:var(--panel2);border-bottom:1px solid var(--border);}
+.org img{height:56px;width:auto;flex:none;}
+.org-dept{font-size:1.15rem;font-weight:600;letter-spacing:.04em;color:var(--text);}
+@media (max-width:640px){.org img{height:44px;} .org-dept{font-size:.95rem;}}
 .topbar{position:sticky;top:0;z-index:30;height:var(--topH);display:flex;align-items:center;gap:14px;padding:0 18px;background:var(--panel2);border-bottom:1px solid var(--border);}
 .topbar h1{font-size:1.1rem;color:var(--accent);letter-spacing:1px;white-space:nowrap;}
 .topbar .cur{flex:1;min-width:0;color:var(--muted);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -296,6 +300,10 @@ td.pin.long{white-space:normal;word-break:break-all;}
 </head>
 <body>
 
+<div class="org">
+  <img src="img/logo.png" alt="한국폴리텍대학 광주캠퍼스 로고" width="262" height="240">
+  <span class="org-dept">Dept. Mechanical System</span>
+</div>
 <header class="topbar">
   <h1>SMARS 로봇 수업</h1>
   <div class="cur" id="curMod">지금 보는 곳: <b>—</b></div>
