@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<!--
+  SMARS 웹 콘솔 (smars_console.html)
+  - 통신 규약: .claude/skills/smars-protocol (줄 단위 ASCII, '\n' 종료)
+  - 3D 트윈: ./web/twin.js (classic script → window.loadSMARSTwin(), three@0.160.0: vendor/ 로컬 묶음 우선, 없으면 CDN import map)
+
+  실행 방법
+  - 파일을 더블클릭(file://)해서 열어도 됩니다. web/twin.js는 일반 <script>로 불러오고,
+    three.js는 vendor/three-r160-bundle.js(로컬)를 쓰므로 인터넷이 없어도 됩니다(파일이 없으면 CDN으로 받음). (python -m http.server 로 열어도 동작)
+  - Web Serial은 Chrome / Edge 에서만 동작하며 localhost 에서도 사용할 수 있습니다.
+  - 장치가 없으면 연결 방식에서 "시뮬레이션"을 선택하세요 (가상 로봇이 같은 줄 규약으로 응답).
+-->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMARS 웹 콘솔</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+:root{
+  --bg:#0f1117;--panel:#1a1d27;--panel2:#141722;--accent:#4f8ef7;
+  --accent2:#f7a64f;--green:#4fcf83;--red:#f74f4f;
+  --yellow:#f7d94f;--purple:#b48cf7;--cyan:#4fd1e0;
+  --text:#e8eaf6;--muted:#7a7f99;--border:#2a2d3e;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{color-scheme:dark;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Segoe UI','Malgun Gothic',sans-serif;font-size:14px;
+  display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:16px;gap:14px;
+}
+.wrap{width:100%;max-width:1180px;display:flex;flex-direction:column;gap:14px;}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+h1{font-size:1.3rem;letter-spacing:2px;color:var(--accent);}
+.subtitle{color:var(--muted);font-size:.78rem;}
+
+.card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:10px;min-width:0;
+}
+.card h2{
+  font-size:.85rem;letter-spacing:1px;color:var(--muted);font-weight:700;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.pins{display:inline-flex;gap:4px;flex-wrap:wrap;}
+.pin-badge{
+  font-family:Consolas,monospace;font-size:.7rem;font-weight:600;
+  padding:2px 7px;border-radius:6px;border:1px solid currentColor;
+  background:rgba(255,255,255,.03);letter-spacing:0;
+}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.grow{flex:1;}
+.muted{color:var(--muted);font-size:.78rem;}
+.mono{font-family:Consolas,monospace;}
+
+/* 트윈 */
+.driverow{display:flex;gap:14px;align-items:stretch;}
+.driverow #twinWrap{flex:2;min-width:0;}
+.ctrlpanel{flex:1;min-width:280px;justify-content:center;}
+@media (max-width:899px){.driverow{flex-direction:column;}.ctrlpanel{min-width:0;}}
+.seg{display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden;}
+.seg button{flex:1;padding:8px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;font-family:inherit;}
+.seg button.active{background:var(--accent);color:#fff;}
+.pane{display:flex;flex-direction:column;gap:8px;align-items:center;}
+.joybase{position:relative;width:180px;height:180px;border-radius:50%;touch-action:none;user-select:none;cursor:grab;
+  background:radial-gradient(circle,#1e2235 60%,#141722);border:2px solid var(--border);}
+.joybase::before{content:'';position:absolute;inset:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;border:1px dashed #3a3f58;}
+.joybase.active{border-color:var(--accent);}
+.joybase.off{opacity:.35;cursor:not-allowed;}
+#joyKnob{position:absolute;left:50%;top:50%;width:62px;height:62px;border-radius:50%;pointer-events:none;
+  transform:translate(-50%,-50%);background:radial-gradient(circle at 35% 35%,#6ba3ff,var(--accent));box-shadow:0 4px 18px rgba(79,142,247,.5);}
+#twinWrap{
+  position:relative;width:100%;height:clamp(300px,52vh,560px);
+  background:radial-gradient(circle at 50% 40%,#1c2133,#0b0d14);
+  border:1px solid var(--border);border-radius:12px;overflow:hidden;
+}
+#twin{position:absolute;inset:0;}
+#twinMsg{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:20px;color:var(--muted);font-size:.85rem;line-height:1.8;
+  pointer-events:none;
+}
+#twinHud{
+  position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;
+  font-family:Consolas,monospace;font-size:.72rem;pointer-events:none;
+}
+#twinHud span{background:rgba(10,12,18,.75);border:1px solid var(--border);padding:3px 8px;border-radius:6px;}
+
+/* 버튼/입력 */
+.btn{
+  padding:7px 14px;border:none;border-radius:9px;
+  font-size:.82rem;font-weight:600;cursor:pointer;color:#fff;background:#2b3150;
+  transition:filter .15s,transform .1s;white-space:nowrap;font-family:inherit;
+}
+.btn:hover{filter:brightness(1.15);}
+.btn:active{transform:scale(.96);filter:brightness(.82);}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none;filter:none;}
+.btn.blue{background:var(--accent);}
+.btn.red{background:var(--red);}
+.btn.yellow{background:var(--yellow);color:#111;}
+.btn.green{background:var(--green);color:#0b1a10;}
+.btn.on{background:var(--green);color:#0b1a10;}
+.btn.sm{padding:4px 10px;font-size:.75rem;}
+select,input[type=number],input[type=text]{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 8px;border-radius:8px;font-family:inherit;font-size:.82rem;
+}
+input[type=number]{width:80px;}
+input[type=range]{accent-color:var(--accent2);width:100%;}
+
+/* 연결 */
+.status-dot{
+  width:12px;height:12px;border-radius:50%;flex-shrink:0;
+  background:var(--red);box-shadow:0 0 6px var(--red);transition:background .3s,box-shadow .3s;
+}
+.status-dot.connected{background:var(--green);box-shadow:0 0 8px var(--green);}
+.status-dot.sim{background:var(--purple);box-shadow:0 0 8px var(--purple);}
+.status-dot.checking{background:var(--yellow);box-shadow:0 0 8px var(--yellow);animation:blink .6s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.status-bar{
+  display:flex;gap:18px;flex-wrap:wrap;font-size:.75rem;color:var(--muted);
+  border-top:1px solid var(--border);padding-top:10px;
+}
+.stat-item{display:flex;flex-direction:column;gap:2px;}
+.stat-label{font-size:.68rem;letter-spacing:.8px;color:#5b6078;}
+.stat-val{font-family:Consolas,monospace;color:var(--text);}
+.stat-val.ok{color:var(--green);} .stat-val.err{color:var(--red);} .stat-val.warn{color:var(--yellow);}
+.notice{
+  font-size:.78rem;line-height:1.7;padding:8px 12px;border-radius:8px;
+  background:#1f1a10;border:1px solid #4a3a16;color:#e9cf8c;
+}
+.notice.info{background:#121a2a;border-color:#24365c;color:#a9c3f2;}
+.notice.err{background:#2a1214;border-color:#5c2428;color:#f2a9ae;}
+.hidden{display:none !important;}
+code,kbd{background:var(--border);padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:.75rem;}
+
+/* 테스트 패널 그리드 */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px;}
+.locked{position:relative;}
+
+/* 모터 */
+.dpad{display:grid;grid-template-columns:repeat(3,62px);grid-template-rows:repeat(3,62px);gap:6px;justify-content:center;}
+.dp{
+  border:none;border-radius:12px;background:#1e2235;color:var(--text);font-size:1.5rem;cursor:pointer;
+  touch-action:none;user-select:none;transition:background .1s,transform .08s;
+}
+.dp.active{background:var(--accent);transform:scale(.93);box-shadow:0 0 14px rgba(79,142,247,.45);}
+.dp.stop{background:#2a1a1a;color:var(--red);font-size:1rem;font-weight:700;}
+.dp.stop.active{background:var(--red);color:#fff;}
+.dp:disabled{opacity:.35;cursor:not-allowed;}
+.slider-row{display:grid;grid-template-columns:64px 1fr 52px;align-items:center;gap:8px;font-size:.78rem;}
+.slider-row .v{font-family:Consolas,monospace;text-align:right;color:var(--accent2);}
+
+/* 게이지 */
+.gauge{display:grid;grid-template-columns:52px 1fr 48px;align-items:center;gap:8px;font-size:.75rem;}
+.gbar{position:relative;height:12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.gbar::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:#3a3f58;}
+.gfill{position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--green);transition:left .12s,width .12s;}
+.gfill.neg{background:var(--accent2);}
+
+/* 초음파 */
+.bignum{font-family:Consolas,monospace;font-size:2.6rem;font-weight:700;color:var(--cyan);line-height:1;}
+.bignum small{font-size:1rem;color:var(--muted);margin-left:4px;}
+.bignum.near{color:var(--red);}
+canvas#distGraph{width:100%;height:130px;background:#0a0c12;border-radius:8px;border:1px solid var(--border);}
+
+/* 부저 */
+.buz-ind{width:16px;height:16px;border-radius:50%;background:#333;border:1px solid var(--border);}
+.buz-ind.on{background:var(--yellow);box-shadow:0 0 12px var(--yellow);}
+
+/* 라인 센서 */
+.linebox{width:84px;height:84px;border-radius:12px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--muted);flex:none;transition:background .1s,border-color .1s;}
+.linebox.black{background:#050505;border:3px solid #ff8a1f;color:#ff8a1f;box-shadow:0 0 14px rgba(255,138,31,.45);}
+.linebox.white{background:#f4f6f8;border:3px solid #5fd8ff;color:#123;}
+.linebox.stale{opacity:.45;}
+.linetxt{font-size:1.6rem;font-weight:700;line-height:1.2;}
+.linehist{display:flex;gap:1px;height:22px;background:#0a0c12;border:1px solid var(--border);border-radius:6px;padding:2px;overflow:hidden;}
+.linehist i{flex:1;border-radius:2px;}
+.linehist i.b{background:#000;outline:1px solid #ff8a1f55;}
+.linehist i.w{background:#e9edf1;}
+
+/* 이벤트 */
+#evtList{max-height:120px;overflow-y:auto;font-family:Consolas,monospace;font-size:.74rem;background:#0a0c12;border-radius:8px;padding:6px 8px;}
+#evtList div{color:var(--yellow);}
+#evtList .safe{color:var(--red);}
+
+/* 핀 */
+table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
+.pintable th,.pintable td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;}
+.pintable th{color:var(--muted);font-weight:600;font-size:.72rem;letter-spacing:.5px;}
+.pintable td.pn{font-family:Consolas,monospace;white-space:nowrap;}
+.cmdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:4px 18px;align-items:start;}
+.cmdtable td{font-size:.74rem;padding:4px 6px;}
+.cmdtable .rsp{display:block;color:var(--green);font-family:Consolas,monospace;font-size:.7rem;margin-top:2px;}
+.cmdtable td.pn{width:1%;}
+.cmdtable tr.grp td{color:var(--accent);font-weight:700;font-size:.7rem;letter-spacing:.5px;padding-top:8px;}
+.cmdtable tr[data-cmd]{cursor:pointer;}
+.cmdtable tr[data-cmd]:hover td{background:var(--panel2);}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle;}
+.table-scroll{overflow-x:auto;}
+#unoSvg{width:100%;height:auto;max-width:640px;display:block;margin:0 auto;}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.74rem;color:var(--muted);justify-content:center;}
+
+/* 주행 정보 */
+.drivebar{padding:10px 14px;gap:8px;}
+.drivebar h2{margin-right:8px;}
+.drivebar details summary{cursor:pointer;font-size:.78rem;}
+.calwrap{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;}
+.calgrid{display:grid;grid-template-columns:minmax(140px,max-content) 80px 36px;gap:4px 8px;align-items:center;font-size:.78rem;}
+
+/* 핀 설정 */
+
+/* 로그 */
+#logBox{
+  height:200px;overflow-y:auto;font-family:Consolas,monospace;font-size:.75rem;
+  background:#0a0c12;padding:8px;border-radius:8px;user-select:text;
+}
+#logBox .tx{color:var(--accent);} #logBox .rx{color:var(--green);}
+#logBox .err{color:var(--red);} #logBox .sys{color:var(--muted);}
+#termOut{height:110px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>SMARS 웹 콘솔</h1>
+  <span class="subtitle">디지털 트윈 · Web Serial 테스트 콘솔 · L298P 쉴드</span>
+</header>
+
+<!-- 1. 주행 영역: 3D 트윈(왼쪽) + 조작 패널(오른쪽), 900px 미만이면 세로로 쌓음 -->
+<div class="driverow">
+<div id="twinWrap">
+  <div id="twin"></div>
+  <div id="twinMsg">3D 트윈 불러오는 중…</div>
+  <div id="twinHud">
+    <span id="hudLink">미연결</span>
+    <span id="hudMotor">L 0 · R 0</span>
+    <span id="hudDist">거리 —</span>
+    <span id="hudBuz">부저 꺼짐</span>
+    <span id="hudLine">라인 —</span>
+  </div>
+</div>
+
+<section class="card ctrlpanel" id="ctrlPanel">
+  <div class="seg" role="tablist" aria-label="조작 방식">
+    <button id="modeDpadBtn" class="active">D-pad</button>
+    <button id="modeJoyBtn">조이스틱</button>
+  </div>
+  <div id="dpadPane" class="pane">
+    <div class="dpad">
+      <div></div><button class="dp needs-conn" data-dir="F" disabled>▲</button><div></div>
+      <button class="dp needs-conn" data-dir="L" disabled>◀</button>
+      <button class="dp stop needs-conn" data-dir="S" disabled>정지</button>
+      <button class="dp needs-conn" data-dir="R" disabled>▶</button>
+      <div></div><button class="dp needs-conn" data-dir="B" disabled>▼</button><div></div>
+    </div>
+    <div class="muted" style="text-align:center">누르는 동안 200ms마다 <code>MOVE</code> 재전송, 떼면 <code>MOVE S</code></div>
+  </div>
+  <div id="joyPane" class="pane hidden">
+    <div id="joyBase" class="joybase off"><div id="joyKnob"></div></div>
+    <div id="joyOut" class="mono" style="text-align:center">●  L 0 / R 0</div>
+    <div class="muted" style="text-align:center">끄는 동안 <code>M L R</code> (변경 시·200ms마다), 놓으면 <code>M 0 0</code></div>
+  </div>
+  <div class="slider-row"><span>속도</span><input type="range" id="speed" min="0" max="100" step="5" value="80"><span class="v" id="speedVal">80%</span></div>
+  <div class="muted" style="text-align:center">키보드 <kbd>↑↓←→</kbd>/<kbd>WASD</kbd> 이동, <kbd>Space</kbd> 정지 (두 모드 공통)</div>
+</section>
+</div>
+
+<!-- 1-b. 주행 정보 (경로·벽은 3D 트윈에 표시) -->
+<section class="card drivebar" id="driveBar">
+  <div class="row">
+    <h2>주행 정보</h2>
+    <div class="status-bar grow" style="border-top:none;padding-top:0">
+      <div class="stat-item"><span class="stat-label">총 이동 거리</span><span class="stat-val" id="mapTotal">0 cm</span></div>
+      <div class="stat-item"><span class="stat-label">시작점 직선 거리</span><span class="stat-val" id="mapStraight">0 cm</span></div>
+      <div class="stat-item"><span class="stat-label">x, y (cm)</span><span class="stat-val" id="mapXY">0, 0</span></div>
+      <div class="stat-item"><span class="stat-label">방향</span><span class="stat-val" id="mapHead">0°</span></div>
+      <div class="stat-item"><span class="stat-label">벽 점</span><span class="stat-val" id="mapObstN">0</span></div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn sm red" id="btnMapReset">원점 재설정</button>
+    <button class="btn sm" id="btnMapObstClr">벽 지우기</button>
+    <button class="btn sm" id="btnMapFit">전체 보기</button>
+    <button class="btn sm" id="btnMapFollow">로봇 따라가기</button>
+    <button class="btn sm" id="btnMapPause">기록 일시정지</button>
+    <button class="btn sm" id="btnMapPng">PNG 저장</button>
+    <span class="muted grow" style="min-width:200px">엔코더가 없어 <b>모터 출력 × 시간 × 보정 계수</b>로 추정한 위치입니다. 오차가 쌓이며, 벽은 초음파 거리를 추정 방향 앞쪽에 찍은 것입니다.</span>
+  </div>
+  <details>
+    <summary class="muted">보정 계수 · 보정 도우미</summary>
+    <div class="calwrap">
+      <div class="calgrid">
+        <span>V100 (100% 직진 속도)</span><input type="number" id="calV100" step="0.1" min="0.1"><span class="muted">cm/s</span>
+        <span>W (궤도 실효 폭)</span><input type="number" id="calW" step="0.1" min="0.1"><span class="muted">cm</span>
+        <span>데드밴드</span><input type="number" id="calDb" step="1" min="0" max="99"><span class="muted">%</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="muted">도우미 (출력 80%, 1초) — V100을 먼저 보정한 뒤 W를 보정하세요.</div>
+        <div class="row">
+          <button class="btn sm needs-conn" id="btnCalFwd" disabled>1초 전진</button>
+          <input type="number" id="calFwdCm" placeholder="실제 cm" min="0" step="0.5">
+          <button class="btn sm" id="btnCalFwdSet">V100 계산</button>
+        </div>
+        <div class="row">
+          <button class="btn sm needs-conn" id="btnCalSpin" disabled>1초 제자리 회전</button>
+          <input type="number" id="calSpinDeg" placeholder="실제 °" min="0" step="1">
+          <button class="btn sm" id="btnCalSpinSet">W 계산</button>
+          <button class="btn sm" id="btnCalDefault">보정 기본값</button>
+        </div>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- 2. 연결 패널 -->
+<section class="card" id="connCard">
+  <h2>연결 <span class="pins" data-pin-ids="usb,bt"></span></h2>
+  <div class="row">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusTxt" class="grow muted">연결 안 됨</span>
+    <select id="modeSel" title="통신 방식">
+      <option value="serial">USB 시리얼</option>
+      <option value="bluetooth">블루투스 COM</option>
+      <option value="sim">시뮬레이션</option>
+    </select>
+    <select id="baudSel" title="보율">
+      <option value="9600">9600 baud</option>
+      <option value="38400">38400 baud</option>
+      <option value="57600" selected>57600 baud</option>
+      <option value="115200">115200 baud</option>
+    </select>
+    <button class="btn blue" id="btnConnect">연결</button>
+    <button class="btn red" id="btnDisconnect" disabled>연결 해지</button>
+    <button class="btn yellow needs-conn" id="btnPing" disabled>핑</button>
+    <button class="btn needs-conn" id="btnLink" disabled>LINK</button>
+  </div>
+  <div id="modeHelp" class="notice info"></div>
+  <div id="noSerial" class="notice err hidden">
+    이 브라우저는 Web Serial을 지원하지 않습니다. Chrome 또는 Edge(데스크톱)에서 여세요. 지금은 시뮬레이션 모드만 사용할 수 있습니다.
+  </div>
+  <div id="simBox" class="hidden">
+    <div class="slider-row" style="grid-template-columns:130px 1fr 60px;">
+      <span>가상 장애물 거리</span>
+      <input type="range" id="simObst" min="3" max="300" value="80">
+      <span class="v" id="simObstVal">80cm</span>
+    </div>
+    <label class="muted row" style="gap:6px"><input type="checkbox" id="simLine"> 가상 바닥: 검정 라인 위 (라인 센서 원시값 1)</label>
+    <div class="muted">시뮬레이션: 전진하면 장애물이 가까워지고, 제자리 회전하면 멀어집니다. 250cm 초과는 감지 없음(<code>DIST -1</code>)으로 응답합니다.</div>
+  </div>
+  <div class="status-bar">
+    <div class="stat-item"><span class="stat-label">상태</span><span class="stat-val" id="sPort">닫힘</span></div>
+    <div class="stat-item"><span class="stat-label">BAUD</span><span class="stat-val" id="sBaud">—</span></div>
+    <div class="stat-item"><span class="stat-label">경로 (LINK)</span><span class="stat-val" id="sLink">—</span></div>
+    <div class="stat-item"><span class="stat-label">핑 왕복</span><span class="stat-val" id="sPing">—</span></div>
+    <div class="stat-item"><span class="stat-label">송신 / 수신</span><span class="stat-val" id="sCnt">0 / 0</span></div>
+    <div class="stat-item"><span class="stat-label">마지막 수신</span><span class="stat-val" id="sLastRx">—</span></div>
+  </div>
+  <div id="connHint" class="muted">연결하기 전에는 테스트 버튼이 비활성화됩니다. 장치가 없으면 "시뮬레이션"을 선택하세요.</div>
+</section>
+
+<!-- 3. 테스트 패널 -->
+<div class="grid">
+
+  <!-- 모터 -->
+  <section class="card">
+    <h2>모터 <span class="pins" data-pin-ids="motorL,motorR"></span></h2>
+    <div class="muted">방향 주행(D-pad·조이스틱)과 속도는 상단 조작 패널에 있습니다.</div>
+    <div class="muted">개별 출력 (<code>M &lt;좌&gt; &lt;우&gt;</code>, 0이 아니면 200ms마다 유지 전송)</div>
+    <div class="slider-row"><span>왼쪽</span><input type="range" class="needs-conn" id="mL" min="-100" max="100" step="5" value="0" disabled><span class="v" id="mLVal">0</span></div>
+    <div class="slider-row"><span>오른쪽</span><input type="range" class="needs-conn" id="mR" min="-100" max="100" step="5" value="0" disabled><span class="v" id="mRVal">0</span></div>
+    <div class="row"><button class="btn sm red needs-conn" id="btnMZero" disabled>개별 출력 0 (M 0 0)</button></div>
+  </section>
+
+  <!-- 초음파 -->
+  <section class="card">
+    <h2>초음파 <span class="pins" data-pin-ids="us"></span></h2>
+    <div class="row">
+      <div class="bignum" id="distBig">—<small>cm</small></div>
+      <span class="grow"></span>
+      <button class="btn blue needs-conn" id="btnUS" disabled>1회 측정</button>
+      <button class="btn needs-conn" id="btnUSW" disabled>연속 측정 켜기</button>
+    </div>
+    <canvas id="distGraph" width="600" height="130"></canvas>
+    <div class="row">
+      <span class="muted">안전거리</span>
+      <input type="number" id="safeCm" min="0" max="200" value="15">
+      <span class="muted">cm</span>
+      <button class="btn sm needs-conn" id="btnSafe" disabled>SAFE 설정</button>
+      <span class="muted mono" id="safeCur">현재: —</span>
+    </div>
+    <div class="row">
+      <button class="btn needs-conn" id="btnAuto" disabled>장애물 회피(AUTO) 켜기</button>
+      <span class="muted">자율주행 중에는 <code>STAT</code>을 300ms마다 조회해 트윈에 반영합니다.</span>
+    </div>
+  </section>
+
+  <!-- 부저 -->
+  <section class="card">
+    <h2>부저 <span class="pins" data-pin-ids="buz"></span></h2>
+    <div class="row">
+      <div class="buz-ind" id="buzInd"></div>
+      <span id="buzTxt" class="muted">꺼짐</span>
+    </div>
+    <div class="row">
+      <span class="muted">길이</span>
+      <input type="number" id="beepMs" min="10" max="5000" value="200">
+      <span class="muted">ms</span>
+      <button class="btn yellow needs-conn" id="btnBeep" disabled>삑</button>
+    </div>
+    <div class="row">
+      <button class="btn needs-conn" id="btnAlarm" disabled>경보 시작</button>
+      <button class="btn needs-conn" id="btnSOS" disabled>SOS</button>
+      <button class="btn red needs-conn" id="btnBuzOff" disabled>끄기</button>
+    </div>
+    <div class="muted">능동형 부저라 음높이는 조절할 수 없습니다. 패턴은 웹이 <code>BUZ 1 &lt;ms&gt;</code>를 박자대로 전송합니다.</div>
+  </section>
+
+  <!-- 블루투스 -->
+  <section class="card">
+    <h2>블루투스 / 링크 <span class="pins" data-pin-ids="bt"></span></h2>
+    <div class="row">
+      <button class="btn blue needs-conn" id="btnLinkTest" disabled>왕복 테스트 20회</button>
+      <span class="muted mono grow" id="linkTestRes">—</span>
+    </div>
+    <div class="gauge"><span>성공률</span><div class="gbar"><div class="gfill" id="ltBar" style="left:0"></div></div><span class="mono" id="ltPct">—</span></div>
+    <div class="muted">터미널 (한 줄 직접 전송, Enter) — 사용 가능한 명령은 "터미널 명령어" 카드 참고</div>
+    <div class="row">
+      <input type="text" id="termIn" class="grow needs-conn" placeholder="예: STAT, MOVE F 50, BUZ 1 300" disabled autocomplete="off">
+      <button class="btn needs-conn" id="btnTerm" disabled>전송</button>
+    </div>
+    <div class="muted">HC-05는 윈도우 "블루투스 COM 포트"로 연결합니다(클래식 SPP는 Web Bluetooth로 접속 불가).</div>
+  </section>
+
+  <!-- 상태/진단 -->
+  <section class="card">
+    <h2>상태 / 진단</h2>
+    <div class="row">
+      <button class="btn needs-conn" id="btnStat" disabled>STAT</button>
+      <button class="btn needs-conn" id="btnInfo" disabled>INFO</button>
+      <label class="muted row" style="gap:4px"><input type="checkbox" id="statPoll" class="needs-conn" disabled> 주기 조회</label>
+      <select id="statMs"><option value="300">300ms</option><option value="500">500ms</option><option value="1000" selected>1초</option><option value="2000">2초</option></select>
+    </div>
+    <div class="gauge"><span>왼쪽</span><div class="gbar"><div class="gfill" id="gL"></div></div><span class="mono" id="gLv">0</span></div>
+    <div class="gauge"><span>오른쪽</span><div class="gbar"><div class="gfill" id="gR"></div></div><span class="mono" id="gRv">0</span></div>
+    <div class="status-bar" style="border-top:none;padding-top:0">
+      <div class="stat-item"><span class="stat-label">펌웨어</span><span class="stat-val" id="sFw">—</span></div>
+      <div class="stat-item"><span class="stat-label">SAFE</span><span class="stat-val" id="sSafe">—</span></div>
+      <div class="stat-item"><span class="stat-label">AUTO</span><span class="stat-val" id="sAuto">—</span></div>
+      <div class="stat-item"><span class="stat-label">마지막 STAT</span><span class="stat-val" id="sStat">—</span></div>
+    </div>
+    <div class="row"><span class="muted grow">이벤트 (워치독 · 안전정지)</span><button class="btn sm" id="btnEvtClr">지우기</button></div>
+    <div id="evtList"></div>
+  </section>
+
+  <!-- 적외선 라인 센서 -->
+  <section class="card" id="lineCard">
+    <h2>라인 센서 (IR) <span class="pins" data-pin-ids="line"></span></h2>
+    <div class="row" style="gap:14px;align-items:center">
+      <div class="linebox" id="lineBox"><span>—</span></div>
+      <div class="grow">
+        <div class="linetxt" id="lineTxt">값 없음</div>
+        <div class="muted mono" id="lineRaw">원시값 —</div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn blue needs-conn" id="btnLine" disabled>1회 읽기</button>
+      <button class="btn needs-conn" id="btnLNW" disabled>연속 읽기 켜기</button>
+      <label class="muted row" style="gap:4px"><input type="checkbox" id="lineInvert"> 반전 (0 = 검정)</label>
+    </div>
+    <div class="muted">최근 60개 (왼쪽이 오래된 값)</div>
+    <div class="linehist" id="lineHist"></div>
+    <div id="lineFwNote" class="notice err hidden">현재 펌웨어는 라인 센서를 지원하지 않습니다(fw=3 이상 필요). <code>smars_firmware</code>를 다시 업로드하세요.</div>
+    <div class="muted">A2 디지털 입력(<code>LINE</code> / <code>LNW 1</code>). 기본 판정은 <b>1 = 검정</b>(반사 없음)입니다. 흰 종이와 검정 테이프 위에 대 보고 반대로 나오면 "반전"을 켜고, 경계가 불안정하면 모듈의 가변저항으로 감도를 맞추세요. 센서는 바닥에서 약 0.5~1.5cm 높이가 적당합니다.</div>
+  </section>
+
+</div>
+
+<!-- 4. 핀 연결 -->
+<section class="card">
+  <h2>핀 연결 (L298P 쉴드 + 아두이노 우노)</h2>
+  <div class="notice" id="pinWarn"></div>
+  <svg id="unoSvg" viewBox="0 0 640 250" role="img" aria-label="아두이노 우노 핀헤더 배치도"></svg>
+  <div class="legend" id="pinLegend"></div>
+  <div class="table-scroll">
+    <table class="pintable">
+      <thead><tr><th>기능</th><th>부품 단자</th><th>아두이노 핀</th><th>비고</th></tr></thead>
+      <tbody id="pinBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 5. 터미널 명령어 -->
+<section class="card" id="cmdCard">
+  <h2>터미널 명령어 <span class="muted" style="font-weight:400;letter-spacing:0">블루투스 / 링크 카드의 터미널에서 한 줄씩 전송 · 대소문자 무시 · 줄을 클릭하면 터미널 입력란에 예시 입력</span></h2>
+  <div class="cmdgrid" id="cmdGrid"></div>
+  <div class="muted"><code>MOVE</code>·<code>M</code>은 600ms 동안 다음 명령이 없으면 워치독이 정지시킵니다(<code>EVT WATCHDOG</code>) — 터미널로 한 번 보내면 잠깐만 움직입니다. 오류 응답: <code>ERR UNKNOWN</code>(없는 명령), <code>ERR ARG</code>(인자 오류), <code>ERR SAFE &lt;cm&gt;</code>, <code>ERR PIN &lt;사유&gt;</code>.</div>
+</section>
+
+<!-- 6. 로그 -->
+<section class="card">
+  <h2>로그
+    <span class="grow"></span>
+    <label class="muted row" style="gap:4px;font-weight:400;letter-spacing:0"><input type="checkbox" id="hideRepeat" checked> 주기 메시지 숨김</label>
+    <button class="btn sm" id="btnLogClr">지우기</button>
+  </h2>
+  <div id="logBox"></div>
+</section>
+
+</div>
+
+<script src="vendor/three-r160-bundle.js"></script><!-- three.js r160 로컬 묶음(오프라인용). 없으면 아래 twin.js가 CDN으로 받는다 -->
+<script src="web/twin.js"></script>
+<script type="module">
+// ═══════════════════════════════════════════════════════════════════════════
+//  핀 맵 (smars-protocol "웹 핀 맵 데이터") — 표·배지·SVG가 모두 여기서 만들어진다
+// ═══════════════════════════════════════════════════════════════════════════
+// 런타임 핀 설정 (smars-protocol "런타임 핀 설정"). PINCFG = 로봇이 확인해 준 값(OK PIN / PIN 응답으로만 바뀜)
+const PIN_KEYS = ['buz','trig','echo','ldir','lbrk','lpwm','rdir','rbrk','rpwm','line'];
+const PIN_DEFAULT = { buz:4, trig:7, echo:8, ldir:12, lbrk:9, lpwm:10, rdir:13, rbrk:-1, rpwm:11, line:16 };
+const PIN_LABEL = { buz:'부저 신호', trig:'초음파 Trig(T)', echo:'초음파 Echo(R)', ldir:'왼쪽 DIR', lbrk:'왼쪽 BRAKE', lpwm:'왼쪽 PWM', rdir:'오른쪽 DIR', rbrk:'오른쪽 BRAKE', rpwm:'오른쪽 PWM', line:'라인 센서 DO' };
+const PWM_PINS = [3, 5, 6, 9, 10, 11];
+const RESERVED_PINS = [0, 1, 14, 15];          // USB D0/D1, BT TX A0(14) / RX A1(15)
+const pinName = n => n < 0 ? '미사용' : n >= 14 ? 'A' + (n - 14) : 'D' + n;
+// 펌웨어와 같은 검증. null=허용, 'ARG' | 'RESERVED' | 'NOPWM' | 'CONFLICT <키>'
+function pinCheck(cfg, key, n) {
+  if (!PIN_KEYS.includes(key) || !Number.isInteger(n) || n < -1 || n > 19) return 'ARG';
+  if (n === -1) return (key === 'lbrk' || key === 'rbrk') ? null : 'ARG';
+  if (RESERVED_PINS.includes(n)) return 'RESERVED';
+  if ((key === 'lpwm' || key === 'rpwm') && !PWM_PINS.includes(n)) return 'NOPWM';
+  const other = PIN_KEYS.find(k => k !== key && cfg[k] === n);
+  return other ? `CONFLICT ${other}` : null;
+}
+function pinReason(code) {
+  const [c, o] = String(code).split(/\s+/);
+  return ({
+    RESERVED: '예약된 핀입니다 (D0·D1=USB, A0·A1=블루투스)',
+    NOPWM: 'PWM 키는 PWM 가능 핀(D3, D5, D6, D9, D10, D11)만 쓸 수 있습니다',
+    CONFLICT: `이미 ${PIN_LABEL[(o || '').toLowerCase()] || o}에서 쓰는 핀입니다`,
+    ARG: '허용되지 않는 값입니다 (미사용은 브레이크에만 가능)',
+  })[c] || String(code);
+}
+let PINCFG = { ...PIN_DEFAULT };
+
+// PINMAP: 표·배지·SVG의 단일 데이터. PINCFG가 바뀔 때마다 buildPinmap으로 다시 만든다
+function buildPinmap(c) {
+  const P = pinName;
+  return [
+    { id:'motorL', func:'왼쪽 모터', color:'#4f8ef7', termText:'DIR / BRAKE / PWM',
+      pinText:`${P(c.ldir)} / ${P(c.lbrk)} / ${P(c.lpwm)}`, note:'쉴드 B채널',
+      pins:[{t:'DIR',p:P(c.ldir)}, ...(c.lbrk < 0 ? [] : [{t:'BRK',p:P(c.lbrk)}]), {t:'PWM',p:P(c.lpwm)}] },
+    { id:'motorR', func:'오른쪽 모터', color:'#4fcf83', termText:'DIR / BRAKE / PWM',
+      pinText:`${P(c.rdir)} / ${c.rbrk < 0 ? 'D8(미사용)' : P(c.rbrk)} / ${P(c.rpwm)}`,
+      note:'쉴드 A채널' + (c.rbrk < 0 && c.echo === 8 ? ', D8은 초음파 Echo와 공유' : ''),
+      pins:[{t:'DIR',p:P(c.rdir)}, c.rbrk < 0 ? {t:'BRK',p:'D8',unused:true} : {t:'BRK',p:P(c.rbrk)}, {t:'PWM',p:P(c.rpwm)}] },
+    { id:'us', func:'초음파', color:'#4fd1e0', termText:'Trig(T) / Echo(R) / 5V(+) / GND(G)',
+      pinText:`${P(c.trig)} / ${P(c.echo)} / 5V / GND`, note:'쉴드 + R T G 헤더 (실물 미검증)',
+      pins:[{t:'T',p:P(c.trig)},{t:'R',p:P(c.echo)},{t:'+',p:'5V'},{t:'G',p:'GND'}] },
+    { id:'buz', func:'부저', color:'#f7d94f', termText:'신호 / GND',
+      pinText:`${P(c.buz)} / GND`, note:'기본값 D4 (능동형)',
+      pins:[{t:'SIG',p:P(c.buz)},{t:'GND',p:'GND'}] },
+    { id:'line', func:'적외선 라인 센서', color:'#e8eaf6', termText:'DO / VCC / GND',
+      pinText:`${P(c.line)} / 5V / GND`, note:'디지털 입력 (fw=3 이상), 1=검정 기본 · 반전 가능',
+      pins:[{t:'DO',p:P(c.line)},{t:'+',p:'5V'},{t:'G',p:'GND'}] },
+    { id:'bt', func:'블루투스 HC-05', color:'#b48cf7', termText:'TXD→ / RXD←', pinText:'A1(아두이노 RX) ← HC-05 TXD / A0(아두이노 TX) → HC-05 RXD',
+      note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)',
+      pins:[{t:'TXD→',p:'A1'},{t:'RXD←',p:'A0'}] },   // 모듈 단자 기준 표기 (TXD→A1, RXD←A0)
+    { id:'usb', func:'USB', color:'#f7a64f', termText:'—', pinText:'D0 / D1', note:'업로드·시리얼 모니터와 공유 · 고정',
+      pins:[{t:'RX',p:'D0'},{t:'TX',p:'D1'}] },
+  ];
+}
+let PINMAP = buildPinmap(PINCFG);
+function pinWarnText(c) {
+  let s = '';
+  if (c.echo === 8 && c.rbrk < 0)
+    s += 'D8 공유 주의: 초음파 Echo(D8)는 쉴드의 오른쪽 모터 BRAKE_A 배선(D8)과 같은 핀입니다. 펌웨어는 D8을 Echo 입력으로만 쓰고 BRAKE_A는 구동하지 않습니다. ';
+  s += `초음파 핀(T=${pinName(c.trig)}, R=${pinName(c.echo)})은 판매처 자료와 + R T G 헤더 설명에 근거한 값으로, 이 쉴드 실물에서 검증되지 않았습니다. `
+    + '오른쪽 모터가 안 돌거나 거리 값이 이상하면 배선을 확인하세요(핀은 터미널의 PIN 명령으로 바꿀 수 있습니다).';
+  return s;
+}
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nowStr = () => new Date().toLocaleTimeString('ko', { hour12:false });
+
+function renderPins() {
+  // 표
+  $('pinBody').innerHTML = PINMAP.map(e =>
+    `<tr><td><span class="swatch" style="background:${e.color}"></span>${e.func}</td>`
+    + `<td>${e.termText}</td><td class="pn">${e.pinText}</td><td>${e.note}</td></tr>`).join('');
+  $('pinWarn').textContent = pinWarnText(PINCFG);
+  // 배지
+  document.querySelectorAll('.pins[data-pin-ids]').forEach(el => {
+    el.innerHTML = el.dataset.pinIds.split(',').map(id => {
+      const e = PINMAP.find(x => x.id === id);
+      const txt = e.pins.filter(p => /^[DA]\d/.test(p.p) && !p.unused).map(p => /[→←]$/.test(p.t) ? `${p.t}${p.p}` : `${p.t}=${p.p}`).join(' ');
+      const prefix = id === 'motorL' ? 'L ' : id === 'motorR' ? 'R ' : id === 'usb' ? 'USB ' : id === 'bt' ? 'BT ' : '';
+      return `<span class="pin-badge" style="color:${e.color}" title="${e.func}">${prefix}${txt}</span>`;
+    }).join('');
+  });
+  // 범례
+  $('pinLegend').innerHTML = PINMAP.map(e => `<span><span class="swatch" style="background:${e.color}"></span>${e.func}</span>`).join('')
+    + `<span><span class="swatch" style="background:#f74f4f"></span>공유 핀(충돌 주의)</span>`;
+  // 우노 핀헤더 SVG
+  const users = {};
+  for (const e of PINMAP) for (const p of e.pins) {
+    (users[p.p] ||= []).push({ e, p });
+  }
+  const top = ['SCL','SDA','AREF','GND','D13','D12','D11','D10','D9','D8',null,'D7','D6','D5','D4','D3','D2','D1','D0'];
+  const bot = ['IOREF','RESET','3.3V','5V','GND','GND','VIN',null,'A0','A1','A2','A3','A4','A5'];
+  const NS = 'http://www.w3.org/2000/svg';
+  let s = `<rect x="10" y="10" width="620" height="230" rx="14" fill="#123a5a" stroke="#2a5d86"/>`
+    + `<text x="320" y="128" text-anchor="middle" fill="#7fb2d9" font-size="18" font-weight="700" font-family="Segoe UI,sans-serif">ARDUINO UNO + L298P</text>`
+    + `<text x="320" y="148" text-anchor="middle" fill="#5d8db5" font-size="11" font-family="Segoe UI,sans-serif">사용 중인 핀은 색으로 표시</text>`
+    + `<rect x="0" y="70" width="40" height="44" rx="4" fill="#9aa3ad"/><text x="20" y="96" text-anchor="middle" font-size="10" fill="#222">USB</text>`;
+  const pinBox = (label, x, y, labelBelow) => {
+    const u = (label === 'GND' && !pinBox.gndUsed) ? (users.GND || []) : (label === 'GND' ? [] : (users[label] || []));
+    if (label === 'GND' && u.length) pinBox.gndUsed = true;
+    const active = u.filter(z => !z.p.unused);
+    let fill = '#0d1118', stroke = '#3a4a5c';
+    if (active.length > 1 && label !== 'GND' && label !== '5V') { fill = '#f74f4f'; stroke = '#fff'; }
+    else if (u.length > 1 && label.startsWith('D')) { fill = active[0]?.e.color || '#555'; stroke = '#f74f4f'; }
+    else if (active.length) { fill = active[0].e.color; stroke = '#fff'; }
+    const title = u.length ? u.map(z => `${z.e.func} ${z.p.t}${z.p.unused ? '(미사용)' : ''}`).join(', ') : '미사용';
+    const ty = labelBelow ? y + 32 : y - 8;
+    return `<g><title>${label}: ${title}</title>`
+      + `<rect x="${x}" y="${y}" width="22" height="22" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${u.length > 1 && label.startsWith('D') ? 3 : 1.2}"/>`
+      + `<circle cx="${x+11}" cy="${y+11}" r="4" fill="#000" opacity=".55"/>`
+      + `<text x="${x+11}" y="${ty}" text-anchor="middle" font-size="10" fill="${active.length ? '#e8eaf6' : '#7a8aa0'}" font-family="Consolas,monospace">${label}</text></g>`;
+  };
+  pinBox.gndUsed = false;
+  let x = 96;
+  for (const l of top) { if (l === null) { x += 12; continue; } s += pinBox(l, x, 34, false); x += 27; }
+  x = 160;
+  for (const l of bot) { if (l === null) { x += 24; continue; } s += pinBox(l, x, 190, true); x += 27; }
+  $('unoSvg').innerHTML = s;
+}
+renderPins();
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  핀 정보 수신 (웹 편집 UI는 제거됨 — 로봇이 보고한 PIN 값만 핀 표·배지·배치도에 반영)
+// ═══════════════════════════════════════════════════════════════════════════
+let fwVersion = null;              // INFO fw= 값
+function onPinReport(parts) {         // PIN buz=4 trig=7 ...
+  for (const t of parts.slice(1)) {
+    const [k, v] = t.split('=');
+    const key = (k || '').toLowerCase(), n = parseInt(v, 10);
+    if (PIN_KEYS.includes(key) && Number.isInteger(n)) PINCFG[key] = n;
+  }
+  pinsChanged();
+  pinReportWaiters.splice(0).forEach(r => r(true));
+}
+function onPinOk(parts) {             // OK PIN ... (다른 도구에서 보낸 경우) → 다시 조회
+  log('로봇 핀 설정이 바뀌었습니다. PIN·STAT 다시 조회 (모터·AUTO·연속 측정은 꺼짐).', 'sys');
+  send('PIN'); send('STAT');
+}
+function onPinErr(parts) {            // ERR PIN <사유> [다른키]
+  log(`핀 변경 거부: ${pinReason(parts.slice(2).join(' '))}`, 'err');
+}
+function pinsChanged() {
+  PINMAP = buildPinmap(PINCFG);
+  renderPins();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  상태 객체 (smars-protocol 트윈 상태) — 수신 응답으로만 갱신
+// ═══════════════════════════════════════════════════════════════════════════
+const state = {
+  left:0, right:0, buzzer:false, distance:null, ultrasonicOn:false,
+  linkType:null, connected:false, auto:false, safeStop:false,
+  line:null, lineOn:false,
+};
+let twin = null;
+function pushState() {
+  if (twin) { try { twin.setState({ ...state }); } catch (e) { console.error(e); } }
+  renderState();
+}
+
+// 트윈 모듈 로드 (실패해도 콘솔은 동작)
+const twinReady = (async () => {
+  try {
+    const mod = await window.loadSMARSTwin();   // web/twin.js(classic script) — file:// 에서도 동작
+    twin = mod.createTwin($('twin'));
+    $('twinMsg').classList.add('hidden');
+    twin.setState({ ...state });
+    mapSyncTwin();
+    window.addEventListener('resize', () => { try { twin.resize(); } catch {} });
+  } catch (e) {
+    $('twinMsg').innerHTML = '3D 트윈(./web/twin.js)을 불러오지 못했습니다.<br>'
+      + (typeof window.loadSMARSTwin !== 'function' ? 'web/twin.js 파일이 smars_console.html 옆 web 폴더에 있는지 확인하세요.<br>' : 'three.js를 불러오지 못했습니다. vendor/three-r160-bundle.js 파일이 있는지(없으면 인터넷 연결)를 확인하세요.<br>')
+      + `<span class="mono" style="font-size:.75rem">${String(e.message || e).replace(/</g,'&lt;')}</span>`;
+    console.error(e);
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  로그
+// ═══════════════════════════════════════════════════════════════════════════
+const LOG_MAX = 300;
+function log(msg, cls = 'sys') {
+  const box = $('logBox');
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = `[${nowStr()}] ${msg}`;
+  box.appendChild(d);
+  while (box.childElementCount > LOG_MAX) box.firstElementChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+$('btnLogClr').onclick = () => { $('logBox').innerHTML = ''; };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  전송 계층: SerialTransport (USB/BT COM) · SimRobot (가상 로봇)
+//  둘 다 write(line) / close() 를 갖고, 수신 줄은 onLine(line) 으로 넘긴다.
+// ═══════════════════════════════════════════════════════════════════════════
+class SerialTransport {
+  constructor(port, onLine, onLost) { this.port = port; this.onLine = onLine; this.onLost = onLost; this.closing = false; }
+  async open(baud) {
+    await this.port.open({ baudRate: baud });
+    this.writer = this.port.writable.getWriter();
+    const dec = new TextDecoderStream();
+    this.pipeDone = this.port.readable.pipeTo(dec.writable).catch(() => {});
+    this.reader = dec.readable.getReader();
+    this.loop();
+  }
+  async loop() {
+    let buf = '';
+    try {
+      while (true) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        buf += value;
+        const parts = buf.split(/\r\n|\r|\n/);
+        buf = parts.pop();                     // 마지막 조각은 다음 청크와 합친다
+        for (const l of parts) { const t = l.trim(); if (t) this.onLine(t); }
+        if (buf.length > 512) buf = '';        // 줄바꿈 없는 쓰레기 방지
+      }
+    } catch (e) {
+      if (!this.closing) log(`수신 오류: ${e.message}`, 'err');
+    }
+    if (!this.closing) this.onLost('수신 스트림이 끊겼습니다.');
+  }
+  async write(line) { await this.writer.write(new TextEncoder().encode(line + '\n')); }
+  async close() {
+    this.closing = true;
+    try { await this.reader?.cancel(); } catch {}
+    try { await this.pipeDone; } catch {}
+    try { this.writer?.releaseLock(); } catch {}
+    try { await this.port.close(); } catch (e) { log(`포트 닫기 오류: ${e.message}`, 'err'); }
+  }
+}
+
+class SimRobot {
+  // 펌웨어(smars-protocol "세부 동작 규칙" 포함)와 같은 줄 규약으로 응답하는 가상 로봇
+  constructor(onLine, latencyMs, onObst) {
+    this.onLine = onLine; this.latency = latencyMs; this.onObst = onObst;
+    this.l = 0; this.r = 0; this.buz = 0; this.safe = 0; this.auto = 0; this.usw = 0; this.lnw = 0; this.lnwLast = -1; this.lnwAt = 0;
+    this.obst = Number($('simObst').value); this.lastCmd = performance.now(); this.driveActive = false;
+    this.autoTurn = 0; this.buzTimer = null; this.lastDist = -1; this.lastMeasAt = -Infinity;
+    this.timer = setInterval(() => this.step(), 100);
+    if (!SimRobot.pins) SimRobot.pins = { ...PIN_DEFAULT };
+  }
+  emit(s) { setTimeout(() => { if (this.timer) this.onLine(s); }, this.latency + Math.random() * this.latency * 0.4); }
+  measure() {
+    this.lastDist = this.obst > 250 ? -1 : Math.max(2, Math.round(this.obst + (Math.random() - 0.5) * 1.6));
+    this.lastMeasAt = performance.now();
+    return this.lastDist;
+  }
+  async write(line) { await sleep(1); this.handle(line.trim()); }
+  async close() { clearInterval(this.timer); this.timer = null; clearTimeout(this.buzTimer); }
+  setObst(v) { this.obst = v; }
+  stop() { this.l = 0; this.r = 0; this.driveActive = false; }
+  // 핀 변경: 펌웨어처럼 EVT 없이 모터 정지 + AUTO/USW 해제 (핀 값은 EEPROM처럼 재연결 후에도 유지)
+  pinApply() { this.stop(); this.auto = 0; this.autoTurn = 0; this.usw = 0; this.lnw = 0; }
+  readLine() { return $('simLine').checked ? 1 : 0; }   // 모듈 원시값: 검정(반사 없음)=1
+  pinLine() { return 'PIN ' + PIN_KEYS.map(k => `${k}=${SimRobot.pins[k]}`).join(' '); }
+  exitAuto() { if (this.auto) { this.auto = 0; this.autoTurn = 0; this.stop(); this.emit('EVT AUTOOFF'); } }
+  // 전진 성분 명령이 SAFE에 걸리면 ERR SAFE <cm> 응답 후 true
+  safeBlock() {
+    if (this.safe <= 0) return false;
+    const d = this.measure();
+    if (d !== -1 && d <= this.safe) { this.emit(`ERR SAFE ${d}`); return true; }
+    return false;
+  }
+  handle(line) {
+    const p = line.split(/\s+/).filter(Boolean); const c = (p[0] || '').toUpperCase();
+    const argc = p.length - 1;
+    const num = i => (p[i] !== undefined && /^-?\d+$/.test(p[i])) ? parseInt(p[i], 10) : NaN;
+    const ARGS = { PING:[0,99], INFO:[0,99], LINK:[0,99], US:[0,0], LINE:[0,0], LNW:[1,1], STAT:[0,99], PIN:[0,2], MOVE:[1,2], M:[2,2], BUZ:[2,2], USW:[1,1], SAFE:[1,1], AUTO:[1,1] };
+    this.lastCmd = performance.now();           // 펌웨어처럼 모든 명령이 워치독을 갱신
+    if (!ARGS[c]) return this.emit('ERR UNKNOWN');
+    if (argc < ARGS[c][0] || argc > ARGS[c][1]) return this.emit('ERR ARG');
+    switch (c) {
+      case 'PING': return this.emit('PONG');
+      case 'INFO': return this.emit('INFO fw=3 shield=L298P');
+      case 'LINK': return this.emit('LINK USB');
+      case 'MOVE': {
+        const d = p[1].toUpperCase();
+        const sp = p[2] === undefined ? 80 : num(2);
+        if (d.length !== 1 || !'FBLRS'.includes(d) || isNaN(sp) || sp < 0 || sp > 100) return this.emit('ERR ARG');
+        this.exitAuto();
+        if (d === 'F' && sp > 0 && this.safeBlock()) { this.stop(); return; }
+        if (d === 'S') { this.stop(); return this.emit('OK MOVE S 0'); }
+        const m = { F:[sp,sp], B:[-sp,-sp], L:[-sp,sp], R:[sp,-sp] }[d];
+        this.l = m[0]; this.r = m[1]; this.driveActive = true;
+        return this.emit(`OK MOVE ${d} ${sp}`);
+      }
+      case 'M': {
+        const l = num(1), r = num(2);
+        if (isNaN(l) || isNaN(r) || l < -100 || l > 100 || r < -100 || r > 100) return this.emit('ERR ARG');
+        this.exitAuto();
+        if (l > 0 && r > 0 && this.safeBlock()) { this.stop(); return; }
+        this.l = l; this.r = r; this.driveActive = !!(l || r);
+        return this.emit(`OK M ${l} ${r}`);
+      }
+      case 'BUZ': {
+        const on = num(1), ms = num(2);
+        if (isNaN(on) || isNaN(ms) || on < 0 || ms < 0) return this.emit('ERR ARG');
+        this.buz = on > 0 ? 1 : 0; clearTimeout(this.buzTimer);
+        if (this.buz && ms > 0) this.buzTimer = setTimeout(() => { this.buz = 0; }, ms);   // ms=0: BUZ 0까지 계속
+        return this.emit(`OK BUZ ${on} ${ms}`);
+      }
+      case 'US': return this.emit(`DIST ${this.measure()}`);
+      case 'LINE': return this.emit(`LINE ${this.readLine()}`);
+      case 'LNW': {
+        const v = num(1); if (v !== 0 && v !== 1) return this.emit('ERR ARG');
+        this.lnw = v; this.lnwLast = -1; return this.emit(`OK LNW ${v}`);
+      }
+      case 'USW': {
+        const v = num(1); if (v !== 0 && v !== 1) return this.emit('ERR ARG');
+        this.usw = v; return this.emit(`OK USW ${v}`);
+      }
+      case 'SAFE': {
+        const v = num(1); if (isNaN(v) || v < 0 || v > 400) return this.emit('ERR ARG');
+        this.safe = v; return this.emit(`OK SAFE ${v}`);
+      }
+      case 'AUTO': {
+        const v = num(1); if (v !== 0 && v !== 1) return this.emit('ERR ARG');
+        this.auto = v; this.autoTurn = 0; this.stop();
+        return this.emit(`OK AUTO ${v}`);
+      }
+      case 'PIN': {
+        const P = SimRobot.pins;
+        if (argc === 0) return this.emit(this.pinLine());
+        if (argc === 1) {
+          if (p[1].toUpperCase() !== 'RESET') return this.emit('ERR ARG');
+          this.pinApply(); Object.assign(P, PIN_DEFAULT);
+          this.emit('OK PIN RESET'); return this.emit(this.pinLine());
+        }
+        const key = p[1].toLowerCase(), n = num(2);
+        const code = pinCheck(P, key, isNaN(n) ? NaN : n);   // ARG → RESERVED → NOPWM → CONFLICT
+        if (code === 'ARG') return this.emit('ERR ARG');
+        if (code) return this.emit(`ERR PIN ${code}`);
+        this.pinApply(); P[key] = n;
+        return this.emit(`OK PIN ${key} ${n}`);
+      }
+      case 'STAT': {
+        const dist = performance.now() - this.lastMeasAt > 1000 ? -1 : this.lastDist;
+        return this.emit(`STAT l=${this.l} r=${this.r} buz=${this.buz} dist=${dist} safe=${this.safe} auto=${this.auto} usw=${this.usw} line=${this.readLine()} lnw=${this.lnw}`);
+      }
+    }
+  }
+  step() {
+    // 간단한 물리: 전진 성분만큼 장애물이 다가오고, 제자리 회전은 공간을 연다
+    const now = performance.now();
+    const fwd = (this.l + this.r) / 2, spin = Math.abs(this.l - this.r) / 2;
+    this.obst = Math.min(300, Math.max(3, this.obst - fwd * 0.04 + spin * 0.03));
+    this.onObst(this.obst);
+    const needMeasure = this.usw || this.auto || (this.safe > 0 && this.l > 0 && this.r > 0);
+    const d = needMeasure ? this.measure() : null;
+    if (this.auto) {
+      if (now - this.lastCmd > 3000) {                  // AUTO 링크 워치독
+        this.auto = 0; this.autoTurn = 0; this.stop(); this.emit('EVT WATCHDOG');
+      } else {
+        const lim = Math.max(this.safe, 20) + 5;
+        if (this.autoTurn > 0) { this.autoTurn--; this.l = -60; this.r = 60; }
+        else if (d !== -1 && d <= lim) { this.autoTurn = 6; this.l = -60; this.r = 60; }
+        else { this.l = 60; this.r = 60; }
+      }
+    } else {
+      if (this.safe > 0 && this.l > 0 && this.r > 0 && d !== null && d !== -1 && d <= this.safe) {
+        this.stop(); this.emit('EVT SAFESTOP');
+      }
+      if (this.driveActive && now - this.lastCmd > 600) {
+        this.stop(); this.emit('EVT WATCHDOG');
+      }
+    }
+    if (this.usw) this.emit(`DIST ${d}`);
+    if (this.lnw) {                                   // 펌웨어처럼 변화 시 즉시, 아니면 250ms마다
+      const v = this.readLine();
+      if (v !== this.lnwLast || now - this.lnwAt >= 250) { this.lnwLast = v; this.lnwAt = now; this.emit(`LINE ${v}`); }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  연결 관리
+// ═══════════════════════════════════════════════════════════════════════════
+const hasSerial = 'serial' in navigator;
+let transport = null, port = null, connMode = null, busy = false, handshaking = false;
+let txCount = 0, rxCount = 0, txChain = Promise.resolve();
+let lastRxLine = '';
+
+const MODE_HELP = {
+  serial: 'USB 케이블로 연결된 아두이노의 COM 포트를 고르세요. 기본 57600 baud. 시리얼 모니터(아두이노 IDE)가 열려 있으면 포트를 열 수 없습니다.',
+  bluetooth: 'HC-05를 윈도우에서 먼저 페어링한 뒤 생긴 "블루투스 COM 포트"(보통 송신용 포트)를 고르세요. 기본 9600 baud.',
+  sim: '하드웨어 없이 가상 로봇에 연결합니다. 실제 장치와 같은 줄 규약과 같은 파서를 사용합니다.',
+};
+function updateModeUI() {
+  const m = $('modeSel').value;
+  $('modeHelp').innerHTML = MODE_HELP[m]
+    + (location.protocol === 'file:' ? ' · 3D 트윈이 보이지 않으면 vendor/three-r160-bundle.js와 web/twin.js 위치를 확인하세요.' : '');
+  $('baudSel').disabled = m === 'sim' || !!transport;
+  if (m === 'serial') $('baudSel').value = '57600';
+  if (m === 'bluetooth') $('baudSel').value = '9600';
+  $('simBox').classList.toggle('hidden', m !== 'sim');
+}
+$('modeSel').onchange = updateModeUI;
+if (!hasSerial) {
+  $('noSerial').classList.remove('hidden');
+  for (const o of $('modeSel').options) if (o.value !== 'sim') o.disabled = true;
+  $('modeSel').value = 'sim';
+}
+updateModeUI();
+
+function setConnUI() {
+  const on = !!transport;
+  $('btnConnect').disabled = on || busy;
+  $('btnDisconnect').disabled = !on || busy;
+  $('modeSel').disabled = on || busy;
+  $('baudSel').disabled = on || busy || $('modeSel').value === 'sim';
+  // 핸드셰이크(PONG 또는 실패)가 끝날 때까지 테스트 버튼은 잠근다
+  document.querySelectorAll('.needs-conn').forEach(el => { el.disabled = !on || handshaking; });
+  $('connHint').classList.toggle('hidden', on);
+  $('joyBase').classList.toggle('off', !on || handshaking);
+  const dot = $('statusDot');
+  dot.className = 'status-dot' + (busy ? ' checking' : on ? (connMode === 'sim' ? ' sim' : ' connected') : '');
+  const label = { serial:'USB 시리얼', bluetooth:'블루투스 COM', sim:'시뮬레이션' }[connMode] || '';
+  $('statusTxt').textContent = busy ? '처리 중…' : on ? `연결됨 — ${label}` : '연결 안 됨';
+  $('sPort').textContent = on ? '열림' : '닫힘';
+  $('sPort').className = 'stat-val ' + (on ? 'ok' : 'err');
+  $('sBaud').textContent = on ? (connMode === 'sim' ? '가상' : $('baudSel').value) : '—';
+}
+setConnUI();
+
+$('simObst').oninput = () => {
+  const v = Number($('simObst').value);
+  $('simObstVal').textContent = `${v}cm`;
+  if (transport instanceof SimRobot) transport.setObst(v);
+};
+
+$('btnConnect').onclick = async () => {
+  if (transport || busy) return;
+  const mode = $('modeSel').value;
+  busy = true; setConnUI();
+  try {
+    if (mode === 'sim') {
+      transport = new SimRobot(handleLine, 15, v => {
+        $('simObst').value = Math.round(v); $('simObstVal').textContent = `${Math.round(v)}cm`;
+      });
+      log('시뮬레이션 로봇에 연결', 'sys');
+    } else {
+      if (!hasSerial) throw new Error('Web Serial 미지원 브라우저');
+      const baud = parseInt($('baudSel').value, 10);
+      port = await navigator.serial.requestPort();
+      const t = new SerialTransport(port, handleLine, reason => onDeviceLost(reason));
+      await t.open(baud);
+      transport = t;
+      log(`포트 열림 (${mode === 'bluetooth' ? '블루투스 COM' : 'USB'}, ${baud} baud)`, 'sys');
+    }
+    connMode = mode;
+    txCount = rxCount = 0; txChain = Promise.resolve();
+    state.connected = true; state.linkType = mode; state.safeStop = false;
+    pushState();
+  } catch (e) {
+    transport = null; port = null;
+    log(`연결 실패: ${e.message}`, 'err');
+  }
+  handshaking = !!transport;
+  busy = false; setConnUI();
+  if (transport) await handshake();
+};
+
+// 핸드셰이크: 포트 연 뒤 1500ms 대기(Uno 리셋·부트로더) → PING 500ms 간격 최대 6회 → LINK/INFO/STAT
+async function handshake() {
+  const t = transport;
+  if (connMode !== 'sim') {
+    $('statusTxt').textContent = '보드 준비 대기 중… (1.5초)';
+    await sleep(1500);
+  }
+  let rtt = null;
+  for (let i = 0; i < 6 && transport === t && rtt == null; i++) {
+    $('statusTxt').textContent = `핸드셰이크 PING ${i + 1}/6…`;
+    rtt = await pingOnce(500);
+  }
+  if (transport !== t) return;
+  handshaking = false;
+  setConnUI();
+  if (rtt == null) {
+    log('핸드셰이크 실패: PONG 응답이 없습니다. 보율·포트·펌웨어를 확인하세요.', 'err');
+    $('sPing').textContent = '응답 없음'; $('sPing').className = 'stat-val err';
+    return;
+  }
+  $('sPing').textContent = `${rtt.toFixed(0)} ms`; $('sPing').className = 'stat-val ok';
+  log(`핸드셰이크 완료 (PONG ${rtt.toFixed(0)} ms)`, 'sys');
+  send('LINK'); send('INFO'); send('STAT');
+  // fw>=2면 PIN 조회 → 핀 표·배치도를 로봇 실제 값으로 표시 (편집 UI는 없음)
+  const fw = await new Promise(res => { infoWaiters.push(res); setTimeout(() => res(null), 1500); });
+  if (transport !== t) return;
+  renderState();                      // fw<3이면 라인 카드에 업데이트 안내
+  if (fw != null && fw < 3) log(`펌웨어 fw=${fw}: 라인 센서(LINE/LNW)는 fw=3 이상에서 동작합니다. 펌웨어를 다시 업로드하세요.`, 'err');
+  if (fw == null || fw < 2) return;   // 구버전 펌웨어: 기본 핀 표시 유지
+  const gotPin = new Promise(res => { pinReportWaiters.push(res); setTimeout(() => res(false), 1500); });
+  send('PIN');
+  if (!(await gotPin)) { log('PIN 응답 없음', 'err'); return; }
+  if (transport !== t) return;
+}
+const infoWaiters = [], pinReportWaiters = [];
+
+$('btnDisconnect').onclick = () => disconnect('사용자가 연결을 해지했습니다.', false);
+
+if (hasSerial) {
+  navigator.serial.addEventListener('disconnect', e => {
+    if (port && e.target === port) onDeviceLost('장치가 분리되었습니다.');
+  });
+}
+function onDeviceLost(reason) { if (transport && !busy) disconnect(reason, true); }
+
+async function disconnect(reason, deviceLost) {
+  if (!transport || busy) return;
+  busy = true; setConnUI();
+  stopDrive(false); stopMHold(); stopBuzPattern(false); stopStatPoll(); stopAutoPoll();
+  if (!deviceLost) {
+    // 해지 순서: MOVE S → BUZ 0 0 → USW 0 → AUTO 0 → 큐 비우기 → 리더 취소 → 포트 닫기
+    send('MOVE S'); send('BUZ 0 0'); send('USW 0'); if (fwVersion >= 3) send('LNW 0'); send('AUTO 0');
+    try { await Promise.race([txChain, sleep(1000)]); } catch {}
+    await sleep(150);
+  }
+  const t = transport;
+  transport = null;
+  await t.close();
+  port = null; connMode = null;
+  for (const p of pendingPings.splice(0)) { clearTimeout(p.timer); p.resolve(null); }
+  clearTimeout(buzOffTimer); clearTimeout(usPulseTimer); clearTimeout(safeStopTimer); clearTimeout(linePulseTimer);
+  Object.assign(state, { left:0, right:0, buzzer:false, distance:null, ultrasonicOn:false, linkType:null, connected:false, auto:false, safeStop:false, line:null, lineOn:false });
+  lineRaw = null; lineStream = false; lineHist.length = 0;
+  streamOn = false; handshaking = false;
+  fwVersion = null;
+  distHist.length = 0; drawGraph();
+  pushState();
+  $('sLink').textContent = '—'; $('sLink').className = 'stat-val';
+  log(reason, deviceLost ? 'err' : 'sys');
+  busy = false; setConnUI();
+}
+
+window.addEventListener('beforeunload', () => { if (transport) { try { transport.write('MOVE S'); } catch {} } });
+
+// 송신 큐: write가 겹치지 않게 직렬화
+function send(line, quiet = false) {
+  const t = transport;
+  if (!t) { log(`연결 안 됨: ${line}`, 'err'); return txChain; }
+  txChain = txChain.then(async () => {
+    if (transport !== t && !(busy && t)) return;
+    try {
+      await t.write(line);
+      txCount++; $('sCnt').textContent = `${txCount} / ${rxCount}`;
+      if (!(quiet && $('hideRepeat').checked)) log(`→ ${line}`, 'tx');
+    } catch (e) {
+      log(`전송 오류 (${line}): ${e.message}`, 'err');
+      if (t instanceof SerialTransport) setTimeout(() => onDeviceLost('전송 오류로 연결을 정리합니다.'), 0);
+    }
+  });
+  return txChain;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  수신 파서 — 모든 상태 변경은 여기서만
+// ═══════════════════════════════════════════════════════════════════════════
+let streamOn = false, buzOffTimer = null, usPulseTimer = null, safeStopTimer = null;
+// 라인 센서: 펌웨어는 원시값(0/1)만 보낸다. 검정 판정은 여기서(기본 1=검정, 반전 시 0=검정)
+let lineRaw = null, lineStream = false, linePulseTimer = null, lineInvert = false;
+const lineHist = [];
+try { lineInvert = localStorage.getItem('smars.lineInvert') === '1'; } catch {}
+const lineColor = raw => raw == null ? null : ((raw === 1) !== lineInvert ? 'black' : 'white');
+function setLineRaw(raw) {
+  lineRaw = raw;
+  state.line = lineColor(raw);
+  lineHist.push(raw); if (lineHist.length > 60) lineHist.shift();
+  if (!lineStream) {
+    state.lineOn = true;
+    clearTimeout(linePulseTimer);
+    linePulseTimer = setTimeout(() => { if (!lineStream) { state.lineOn = false; pushState(); } }, 800);
+  }
+}
+let fwInfo = '—', safeCm = null, lastStatAt = null;
+const distHist = [];
+const pendingPings = [];
+
+function handleLine(raw) {
+  const line = raw.trim();
+  if (!line) return;
+  rxCount++; $('sCnt').textContent = `${txCount} / ${rxCount}`;
+  $('sLastRx').textContent = nowStr(); $('sLastRx').className = 'stat-val ok';
+  const parts = line.split(/\s+/);
+  const head = parts[0].toUpperCase();
+  const sub = (parts[1] || '').toUpperCase();
+  const hide = $('hideRepeat').checked && (
+    line === lastRxLine || (head === 'DIST' && streamOn) || (head === 'LINE' && lineStream) || (head === 'STAT' && (statTimer || autoTimer)));
+  lastRxLine = line;
+  if (!hide) log(`← ${line}`, head === 'ERR' ? 'err' : 'rx');
+
+  const n = i => parseInt(parts[i], 10);
+  let changed = false;
+
+  switch (head) {
+    case 'PONG': {
+      const p = pendingPings.shift();
+      if (p) { clearTimeout(p.timer); p.resolve(performance.now() - p.t0); }
+      break;
+    }
+    case 'LINK': {
+      const via = sub;
+      $('sLink').textContent = via || '?';
+      const expect = connMode === 'bluetooth' ? 'BT' : connMode === 'serial' ? 'USB' : null;
+      const mismatch = expect && via && via !== expect;
+      $('sLink').className = 'stat-val ' + (mismatch ? 'warn' : 'ok');
+      if (mismatch) log(`경로 불일치: 선택한 방식은 ${expect}인데 펌웨어는 ${via}로 받았다고 응답했습니다.`, 'err');
+      break;
+    }
+    case 'INFO':
+      fwInfo = parts.slice(1).join(' ') || '?';
+      { const m = /fw=(\d+)/i.exec(line); fwVersion = m ? parseInt(m[1], 10) : 0; }
+      infoWaiters.splice(0).forEach(r => r(fwVersion));
+      break;
+    case 'DIST': {
+      const cm = n(1);
+      if (!isNaN(cm)) {
+        state.distance = cm < 0 ? null : cm;
+        distHist.push(state.distance); if (distHist.length > 60) distHist.shift();
+        if (!streamOn) {
+          state.ultrasonicOn = true;
+          clearTimeout(usPulseTimer);
+          usPulseTimer = setTimeout(() => { if (!streamOn) { state.ultrasonicOn = false; pushState(); } }, 800);
+        }
+        changed = true; drawGraph();
+        mapAddObstacle(state.distance);
+      }
+      break;
+    }
+    case 'LINE': {
+      const v = n(1);
+      if (v === 0 || v === 1) { setLineRaw(v); changed = true; }
+      break;
+    }
+    case 'OK':
+      if (sub === 'PIN') { onPinOk(parts); break; }
+      changed = handleOk(sub, parts);
+      break;
+    case 'STAT': {
+      const kv = {};
+      for (const t of parts.slice(1)) { const [k, v] = t.split('='); kv[k.toLowerCase()] = parseInt(v, 10); }
+      if (!isNaN(kv.l)) state.left = kv.l;
+      if (!isNaN(kv.r)) state.right = kv.r;
+      // buz=1: 이미 켜짐이면 자동 꺼짐 타이머를 그대로 둔다. buz=0: 꺼짐 확정
+      if (!isNaN(kv.buz)) {
+        // buz=1은 무시한다(켜짐은 OK BUZ 응답으로만): 자동 꺼짐 뒤 늦게 온 STAT이 다시 켜지 않게
+        if (kv.buz === 0) { clearTimeout(buzOffTimer); state.buzzer = false; }
+      }
+      if (!isNaN(kv.dist)) state.distance = kv.dist < 0 ? null : kv.dist;
+      if (!isNaN(kv.usw)) {
+        streamOn = kv.usw === 1;
+        if (streamOn) { clearTimeout(usPulseTimer); state.ultrasonicOn = true; }
+        else state.ultrasonicOn = false;
+      }
+      if (!isNaN(kv.safe)) safeCm = kv.safe;
+      if (kv.lnw === 0 || kv.lnw === 1) {
+        lineStream = kv.lnw === 1;
+        if (lineStream) { clearTimeout(linePulseTimer); state.lineOn = true; }
+        else state.lineOn = false;
+      }
+      if (kv.line === 0 || kv.line === 1) { lineRaw = kv.line; state.line = lineColor(kv.line); }
+      if (!isNaN(kv.auto)) { state.auto = kv.auto === 1; syncAutoPoll(); }
+      lastStatAt = nowStr();
+      changed = true;
+      break;
+    }
+    case 'EVT': {
+      addEvent(sub, line);
+      if (sub === 'SAFESTOP') {
+        onSafeHold();
+      } else if (sub === 'WATCHDOG') {
+        state.left = 0; state.right = 0;
+        if (state.auto) { state.auto = false; syncAutoPoll(); }   // AUTO 링크 워치독도 같은 이벤트
+      } else if (sub === 'AUTOOFF') {
+        state.auto = false; syncAutoPoll();
+      }
+      changed = true;
+      break;
+    }
+    case 'PIN':
+      onPinReport(parts);
+      break;
+    case 'ERR':
+      if (sub === 'PIN') { onPinErr(parts); break; }
+      if (sub === 'SAFE') {
+        addEvent('SAFESTOP', line);
+        const cm = n(2);                       // ERR SAFE <cm>: 펌웨어가 방금 잰 거리
+        if (!isNaN(cm)) {
+          state.distance = cm < 0 ? null : cm;
+          distHist.push(state.distance); if (distHist.length > 60) distHist.shift();
+          drawGraph();
+        }
+        onSafeHold();
+        changed = true;
+      }
+      break;
+    default:
+      break;
+  }
+  if (changed || head === 'INFO' || head === 'LINK') pushState();
+}
+
+function handleOk(cmd, parts) {
+  const n = i => parseInt(parts[i], 10);
+  switch (cmd) {
+    case 'MOVE': {
+      const d = (parts[2] || '').toUpperCase();
+      const sp = isNaN(n(3)) ? 80 : n(3);
+      const m = { F:[sp,sp], B:[-sp,-sp], L:[-sp,sp], R:[sp,-sp], S:[0,0] }[d];
+      if (!m) return false;
+      state.left = m[0]; state.right = m[1];
+      if (d !== 'S') state.safeStop = false;
+      return true;
+    }
+    case 'M':
+      if (isNaN(n(2)) || isNaN(n(3))) return false;
+      state.left = n(2); state.right = n(3);
+      if (state.left || state.right) state.safeStop = false;
+      return true;
+    case 'BUZ': {
+      const on = n(2), ms = n(3);
+      setBuzzer(on > 0, isNaN(ms) ? null : ms);
+      return true;
+    }
+    case 'USW':
+      streamOn = n(2) === 1;
+      state.ultrasonicOn = streamOn;
+      return true;
+    case 'SAFE':
+      safeCm = n(2);
+      return true;
+    case 'LNW':
+      lineStream = n(2) === 1;
+      state.lineOn = lineStream;
+      return true;
+    case 'AUTO':
+      state.auto = n(2) === 1;
+      if (!state.auto) { state.left = 0; state.right = 0; }
+      syncAutoPoll();
+      return true;
+  }
+  return false;
+}
+
+function setBuzzer(on, ms) {
+  clearTimeout(buzOffTimer);
+  state.buzzer = on;
+  // 펌웨어는 부저 종료를 알리지 않으므로 ms 후 웹에서 false로 돌린다. ms=0은 BUZ 0까지 계속 울림
+  if (on && ms > 0) buzOffTimer = setTimeout(() => { state.buzzer = false; pushState(); }, ms);
+}
+
+// SAFE 유지: EVT SAFESTOP / ERR SAFE → 전진 반복 전송 중단, 떼고 다시 눌러야 재시도
+function onSafeHold() {
+  state.left = 0; state.right = 0; state.safeStop = true;
+  clearTimeout(safeStopTimer);
+  safeStopTimer = setTimeout(() => { state.safeStop = false; pushState(); }, 1500);
+  if (driveDir === 'F' && driveTimer) {
+    clearInterval(driveTimer); driveTimer = null;   // driveDir는 유지: 같은 방향 재입력은 무시, 떼면 stopDrive
+    log('안전거리 이내 — 전진 반복 전송을 멈췄습니다. 버튼/키를 뗐다가 다시 누르세요.', 'err');
+  }
+  joyOnSafeHold();
+  const [l, r] = mVals();
+  if (mTimer && l > 0 && r > 0) {
+    clearInterval(mTimer); mTimer = null;
+    log('안전거리 이내 — 개별 출력 유지 전송을 멈췄습니다. 슬라이더를 다시 움직이면 재시도합니다.', 'err');
+  }
+}
+
+function addEvent(kind, line) {
+  const box = $('evtList');
+  const d = document.createElement('div');
+  if (kind === 'SAFESTOP') d.className = 'safe';
+  const label = kind === 'SAFESTOP' ? '안전정지' : kind === 'WATCHDOG' ? '워치독 정지' : kind;
+  d.textContent = `[${nowStr()}] ${label} — ${line}`;
+  box.prepend(d);
+  while (box.childElementCount > 100) box.lastElementChild.remove();
+}
+$('btnEvtClr').onclick = () => { $('evtList').innerHTML = ''; };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  화면 렌더 (state → DOM)
+// ═══════════════════════════════════════════════════════════════════════════
+function gauge(fillId, valId, v) {
+  const f = $(fillId);
+  const w = Math.min(100, Math.abs(v)) / 2;
+  f.style.width = w + '%';
+  f.style.left = v >= 0 ? '50%' : (50 - w) + '%';
+  f.classList.toggle('neg', v < 0);
+  $(valId).textContent = v;
+}
+function renderState() {
+  gauge('gL', 'gLv', state.left);
+  gauge('gR', 'gRv', state.right);
+  const d = state.distance;
+  const big = $('distBig');
+  big.innerHTML = (d == null ? '—' : d) + '<small>cm</small>';
+  big.classList.toggle('near', d != null && safeCm > 0 && d <= safeCm);
+  $('buzInd').classList.toggle('on', state.buzzer);
+  $('buzTxt').textContent = state.buzzer ? '울리는 중' : '꺼짐';
+  const usw = $('btnUSW');
+  usw.textContent = streamOn ? '연속 측정 끄기' : '연속 측정 켜기';
+  usw.classList.toggle('on', streamOn);
+  const au = $('btnAuto');
+  au.textContent = state.auto ? '장애물 회피(AUTO) 끄기' : '장애물 회피(AUTO) 켜기';
+  au.classList.toggle('on', state.auto);
+  $('safeCur').textContent = `현재: ${safeCm == null ? '—' : safeCm === 0 ? '해제' : safeCm + 'cm'}`;
+  $('sSafe').textContent = safeCm == null ? '—' : safeCm === 0 ? '해제' : safeCm + 'cm';
+  $('sAuto').textContent = state.auto ? '켜짐' : '꺼짐';
+  $('sFw').textContent = fwInfo;
+  $('sStat').textContent = lastStatAt || '—';
+  // 라인 센서
+  const lb = $('lineBox');
+  lb.className = 'linebox' + (state.line ? ' ' + state.line : '') + (state.line && !state.lineOn ? ' stale' : '');
+  lb.innerHTML = `<span>${state.line === 'black' ? '검정' : state.line === 'white' ? '흰색' : '—'}</span>`;
+  $('lineTxt').textContent = state.line === 'black' ? '검정 (라인 인식)' : state.line === 'white' ? '흰색 (바닥)' : '값 없음';
+  $('lineTxt').style.color = state.line === 'black' ? '#ff8a1f' : '';
+  $('lineRaw').textContent = `원시값 ${lineRaw == null ? '—' : lineRaw + (lineRaw ? ' (HIGH)' : ' (LOW)')} · 판정 ${lineInvert ? '0' : '1'} = 검정${lineStream ? ' · 연속 읽는 중 ●' : ''}`;
+  $('lineHist').innerHTML = lineHist.map(v => `<i class="${lineColor(v) === 'black' ? 'b' : 'w'}"></i>`).join('');
+  const lnw = $('btnLNW');
+  lnw.textContent = lineStream ? '연속 읽기 끄기' : '연속 읽기 켜기';
+  lnw.classList.toggle('on', lineStream);
+  const lineOld = !!transport && fwVersion != null && fwVersion < 3;
+  $('lineFwNote').classList.toggle('hidden', !lineOld);
+  // HUD
+  $('hudLine').textContent = `라인 ${state.line === 'black' ? '검정' : state.line === 'white' ? '흰색' : '—'}${state.lineOn ? ' ●' : ''}`;
+  $('hudLine').style.color = state.line === 'black' ? '#ff8a1f' : '';
+  $('hudLink').textContent = state.connected ? ({ serial:'USB 시리얼', bluetooth:'블루투스', sim:'시뮬레이션' }[state.linkType] || '연결됨') : '미연결';
+  $('hudMotor').textContent = `L ${state.left} · R ${state.right}`;
+  $('hudDist').textContent = `거리 ${d == null ? '—' : d + 'cm'}${state.ultrasonicOn ? ' ●' : ''}`;
+  $('hudBuz').textContent = state.buzzer ? '부저 ON' : '부저 꺼짐';
+  $('hudBuz').style.color = state.buzzer ? 'var(--yellow)' : '';
+  $('hudDist').style.color = state.safeStop ? 'var(--red)' : '';
+}
+
+function drawGraph() {
+  const cv = $('distGraph');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 600, H = cv.clientHeight || 130;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const maxCm = 200, pad = 18;
+  const y = v => H - 6 - (Math.min(v, maxCm) / maxCm) * (H - 12);
+  g.font = '10px Consolas, monospace'; g.fillStyle = '#5b6078'; g.strokeStyle = '#1f2333'; g.lineWidth = 1;
+  for (const v of [0, 50, 100, 150, 200]) {
+    g.beginPath(); g.moveTo(pad + 10, y(v)); g.lineTo(W, y(v)); g.stroke();
+    g.fillText(String(v), 2, y(v) + 3);
+  }
+  if (safeCm > 0) {
+    g.strokeStyle = '#f74f4f'; g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(pad + 10, y(safeCm)); g.lineTo(W, y(safeCm)); g.stroke(); g.setLineDash([]);
+  }
+  const x0 = pad + 10, step = (W - x0 - 4) / 59;
+  g.strokeStyle = '#4fd1e0'; g.lineWidth = 2; g.beginPath();
+  let pen = false;
+  distHist.forEach((v, i) => {
+    const x = x0 + (i + 60 - distHist.length) * step;
+    if (v == null) { pen = false; return; }
+    if (!pen) { g.moveTo(x, y(v)); pen = true; } else g.lineTo(x, y(v));
+  });
+  g.stroke();
+  g.fillStyle = '#4fd1e0';
+  distHist.forEach((v, i) => {
+    if (v == null) return;
+    g.beginPath(); g.arc(x0 + (i + 60 - distHist.length) * step, y(v), 2, 0, Math.PI * 2); g.fill();
+  });
+}
+window.addEventListener('resize', drawGraph);
+renderState(); drawGraph();
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  핑 / 링크 테스트
+// ═══════════════════════════════════════════════════════════════════════════
+function pingOnce(timeoutMs = 1000) {
+  return new Promise(resolve => {
+    if (!transport) return resolve(null);
+    const entry = { t0: performance.now(), resolve };
+    entry.timer = setTimeout(() => {
+      const i = pendingPings.indexOf(entry);
+      if (i >= 0) pendingPings.splice(i, 1);
+      resolve(null);
+    }, timeoutMs);
+    pendingPings.push(entry);
+    send('PING', true);
+  });
+}
+$('btnPing').onclick = async () => {
+  $('sPing').textContent = '…'; $('sPing').className = 'stat-val warn';
+  const rtt = await pingOnce();
+  $('sPing').textContent = rtt == null ? '시간 초과' : `${rtt.toFixed(0)} ms`;
+  $('sPing').className = 'stat-val ' + (rtt == null ? 'err' : 'ok');
+};
+$('btnLink').onclick = () => send('LINK');
+
+let linkTesting = false;
+$('btnLinkTest').onclick = async () => {
+  if (linkTesting) return;
+  linkTesting = true; $('btnLinkTest').disabled = true;
+  send('LINK');
+  const N = 20; let ok = 0, sum = 0, max = 0;
+  for (let i = 0; i < N && transport; i++) {
+    const rtt = await pingOnce(1000);
+    if (rtt != null) { ok++; sum += rtt; max = Math.max(max, rtt); }
+    $('linkTestRes').textContent = `${i + 1}/${N} 진행 중… 성공 ${ok}`;
+    await sleep(50);
+  }
+  const pct = Math.round(ok / N * 100);
+  $('linkTestRes').textContent = ok ? `성공 ${ok}/${N} · 평균 ${(sum / ok).toFixed(0)}ms · 최대 ${max.toFixed(0)}ms` : `성공 0/${N} — 응답 없음`;
+  $('ltBar').style.width = pct + '%';
+  $('ltBar').classList.toggle('neg', pct < 90);
+  $('ltPct').textContent = pct + '%';
+  log(`링크 테스트: ${$('linkTestRes').textContent}`, 'sys');
+  linkTesting = false; $('btnLinkTest').disabled = !transport;
+};
+
+// 터미널
+function termSend() {
+  const v = $('termIn').value.trim();
+  if (!v) return;
+  send(v);
+  $('termIn').value = '';
+}
+$('btnTerm').onclick = termSend;
+// 터미널 명령어 도움말 (smars-protocol 명령표와 같게 유지). [예시, 문법, 설명, 응답 예]
+const CMD_HELP = [
+  ['기본', [
+    ['PING', 'PING', '링크 확인', 'PONG'],
+    ['INFO', 'INFO', '펌웨어 정보', 'INFO fw=3 shield=L298P'],
+    ['LINK', 'LINK', '받은 통신 경로', 'LINK USB / LINK BT'],
+    ['STAT', 'STAT', '현재 상태 전체', 'STAT l= r= buz= dist= safe= auto= usw= line= lnw='],
+  ]],
+  ['주행', [
+    ['MOVE F 50', 'MOVE <F|B|L|R|S> [%]', 'F 전진 · B 후진 · L/R 제자리 회전 · S 정지 (속도 기본 80%)', 'OK MOVE F 50'],
+    ['M 60 -60', 'M <좌> <우>', '좌우 모터 개별 출력 −100~100', 'OK M 60 -60'],
+    ['SAFE 15', 'SAFE <cm>', '전진 중 이 거리 이하면 자동 정지 (0=해제)', 'OK SAFE 15'],
+    ['AUTO 1', 'AUTO <0|1>', '장애물 회피 자율주행 켜기/끄기', 'OK AUTO 1'],
+  ]],
+  ['센서·부저', [
+    ['US', 'US', '초음파 1회 측정', 'DIST 32 (없음 -1)'],
+    ['USW 1', 'USW <0|1>', '초음파 100ms 연속 측정', 'OK USW 1 → DIST …'],
+    ['LINE', 'LINE', '라인 센서 1회 읽기 (원시값, fw=3)', 'LINE 1'],
+    ['LNW 1', 'LNW <0|1>', '라인 센서 연속 읽기 (변화 시 즉시 + 250ms마다)', 'OK LNW 1 → LINE …'],
+    ['BUZ 1 300', 'BUZ <0|1> <ms>', '부저 켜기, ms 뒤 자동 꺼짐 (0=계속)', 'OK BUZ 1 300'],
+  ]],
+  ['핀', [
+    ['PIN', 'PIN', '현재 핀 설정 조회', 'PIN buz=4 … line=16'],
+    ['PIN buz 4', 'PIN <키> <번호>', '핀 변경 + EEPROM 저장. 키: buz trig echo ldir lbrk lpwm rdir rbrk rpwm line, 번호 2~19 (A2=16)', 'OK PIN buz 4'],
+    ['PIN RESET', 'PIN RESET', '핀 기본값 복원', 'OK PIN RESET'],
+  ]],
+];
+{
+  const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  $('cmdGrid').innerHTML = CMD_HELP.map(([grp, rows]) =>
+    `<table class="pintable cmdtable"><tbody><tr class="grp"><td colspan="2">${grp}</td></tr>`
+    + rows.map(([ex, syn, desc, resp]) =>
+      `<tr data-cmd="${esc(ex)}" title="클릭하면 터미널에 입력: ${esc(ex)}"><td class="pn">${esc(syn)}</td><td>${esc(desc)}<span class="rsp">${esc(resp)}</span></td></tr>`).join('')
+    + '</tbody></table>').join('');
+  document.querySelectorAll('#cmdCard tr[data-cmd]').forEach(tr => tr.addEventListener('click', () => {
+    $('termIn').value = tr.dataset.cmd;
+    if (!$('termIn').disabled) $('termIn').focus();
+  }));
+}
+$('termIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); termSend(); } });
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  모터
+// ═══════════════════════════════════════════════════════════════════════════
+const speed = () => parseInt($('speed').value, 10);
+$('speed').oninput = () => { $('speedVal').textContent = `${speed()}%`; };
+let driveDir = null, driveTimer = null;
+const dpBtn = d => document.querySelector(`.dp[data-dir="${d}"]`);
+
+function startDrive(dir) {
+  if (!transport) return;
+  if (joyActive) joyRelease(false);
+  if (dir === 'S') { stopDrive(true); return; }
+  if (driveDir === dir) return;
+  stopMHold();
+  driveDir = dir;
+  document.querySelectorAll('.dp').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+  send(`MOVE ${dir} ${speed()}`);
+  clearInterval(driveTimer);
+  driveTimer = setInterval(() => { if (transport) send(`MOVE ${driveDir} ${speed()}`, true); }, 200);
+}
+function stopDrive(sendStop = true) {
+  clearInterval(driveTimer); driveTimer = null; driveDir = null;
+  document.querySelectorAll('.dp').forEach(b => b.classList.remove('active'));
+  if (sendStop && transport) send('MOVE S');
+}
+document.querySelectorAll('.dp').forEach(btn => {
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    btn.setPointerCapture?.(e.pointerId);
+    if (btn.dataset.dir === 'S') { btn.classList.add('active'); stopDrive(true); setTimeout(() => btn.classList.remove('active'), 150); }
+    else startDrive(btn.dataset.dir);
+  });
+  const release = () => { if (driveDir && driveDir === btn.dataset.dir) stopDrive(true); };
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointercancel', release);
+  btn.addEventListener('lostpointercapture', release);
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+});
+
+const KEYMAP = { ArrowUp:'F', KeyW:'F', ArrowDown:'B', KeyS:'B', ArrowLeft:'L', KeyA:'L', ArrowRight:'R', KeyD:'R' };
+const held = [];
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range') return;
+  if (!transport) return;
+  if (e.code === 'Space') { e.preventDefault(); held.length = 0; stopDrive(true); return; }
+  const d = KEYMAP[e.code];
+  if (!d) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (!held.includes(e.code)) held.push(e.code);
+  startDrive(d);
+});
+document.addEventListener('keyup', e => {
+  const d = KEYMAP[e.code];
+  if (!d) return;
+  const i = held.indexOf(e.code);
+  if (i >= 0) held.splice(i, 1);
+  if (!transport) return;
+  if (held.length) startDrive(KEYMAP[held[held.length - 1]]);
+  else if (driveDir) stopDrive(true);
+});
+// 창 포커스를 잃거나 탭이 숨겨지면 D-pad 반복과 M 유지 전송을 모두 멈춘다
+function haltHolds() {
+  held.length = 0;
+  if (driveDir) stopDrive(true);
+  if (joyActive) joyRelease(true);
+  if (mTimer) { stopMHold(); if (transport) send('M 0 0'); }
+}
+window.addEventListener('blur', haltHolds);
+document.addEventListener('visibilitychange', () => { if (document.hidden) haltHolds(); });
+
+// 개별 출력 슬라이더
+let mTimer = null;
+function mVals() { return [parseInt($('mL').value, 10), parseInt($('mR').value, 10)]; }
+function onMInput() {
+  const [l, r] = mVals();
+  $('mLVal').textContent = l; $('mRVal').textContent = r;
+  if (!transport) return;
+  if (driveDir) { clearInterval(driveTimer); driveTimer = null; driveDir = null; document.querySelectorAll('.dp').forEach(b => b.classList.remove('active')); }
+  send(`M ${l} ${r}`);
+  clearInterval(mTimer); mTimer = null;
+  if (l || r) mTimer = setInterval(() => { if (transport) { const [a, b] = mVals(); send(`M ${a} ${b}`, true); } }, 200);
+}
+$('mL').oninput = onMInput; $('mR').oninput = onMInput;
+function stopMHold() {
+  clearInterval(mTimer); mTimer = null;
+  $('mL').value = 0; $('mR').value = 0; $('mLVal').textContent = '0'; $('mRVal').textContent = '0';
+}
+$('btnMZero').onclick = () => { stopMHold(); send('M 0 0'); };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  부저 (능동형: BUZ 1 <ms>를 박자대로 전송)
+// ═══════════════════════════════════════════════════════════════════════════
+let buzTimers = [], alarmTimer = null;
+function stopBuzPattern(sendOff = true) {
+  buzTimers.forEach(clearTimeout); buzTimers = [];
+  clearInterval(alarmTimer); alarmTimer = null;
+  $('btnAlarm').textContent = '경보 시작'; $('btnAlarm').classList.remove('on');
+  if (sendOff && transport) send('BUZ 0 0');
+}
+$('btnBeep').onclick = () => {
+  const ms = Math.max(10, Math.min(5000, parseInt($('beepMs').value, 10) || 200));
+  send(`BUZ 1 ${ms}`);
+};
+$('btnAlarm').onclick = () => {
+  if (alarmTimer) { stopBuzPattern(true); return; }
+  stopBuzPattern(false);
+  const beat = () => { if (transport) send('BUZ 1 300', true); else stopBuzPattern(false); };
+  beat();
+  alarmTimer = setInterval(beat, 500);
+  $('btnAlarm').textContent = '경보 중지'; $('btnAlarm').classList.add('on');
+};
+$('btnSOS').onclick = () => {
+  stopBuzPattern(false);
+  const U = 150; // 단점 길이
+  const seq = ['.', '.', '.', ' ', '-', '-', '-', ' ', '.', '.', '.'];
+  let t = 0;
+  for (const s of seq) {
+    if (s === ' ') { t += U * 2; continue; }
+    const on = s === '.' ? U : U * 3;
+    const at = t;
+    buzTimers.push(setTimeout(() => { if (transport) send(`BUZ 1 ${on}`); }, at));
+    t += on + U;
+  }
+  buzTimers.push(setTimeout(() => { buzTimers = []; }, t));
+};
+$('btnBuzOff').onclick = () => stopBuzPattern(true);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  초음파 / SAFE / AUTO
+// ═══════════════════════════════════════════════════════════════════════════
+$('btnUS').onclick = () => send('US');
+$('btnUSW').onclick = () => send(`USW ${streamOn ? 0 : 1}`);
+$('btnLine').onclick = () => send('LINE');
+$('btnLNW').onclick = () => send(`LNW ${lineStream ? 0 : 1}`);   // 버튼 상태는 OK LNW 응답으로 바뀜
+$('lineInvert').checked = lineInvert;
+$('lineInvert').onchange = () => {
+  lineInvert = $('lineInvert').checked;
+  try { localStorage.setItem('smars.lineInvert', lineInvert ? '1' : '0'); } catch {}
+  state.line = lineColor(lineRaw);
+  pushState();
+};   // 버튼 상태는 OK USW 응답으로 바뀜
+$('btnSafe').onclick = () => {
+  const v = Math.max(0, Math.min(400, parseInt($('safeCm').value, 10) || 0));
+  send(`SAFE ${v}`);
+};
+$('btnAuto').onclick = () => send(`AUTO ${state.auto ? 0 : 1}`);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STAT 주기 조회
+// ═══════════════════════════════════════════════════════════════════════════
+let statTimer = null, autoTimer = null;
+function startStatPoll() {
+  stopStatPoll(false);
+  statTimer = setInterval(() => { if (transport) send('STAT', true); }, parseInt($('statMs').value, 10));
+}
+function stopStatPoll(uncheck = true) { clearInterval(statTimer); statTimer = null; if (uncheck) $('statPoll').checked = false; }
+$('statPoll').onchange = () => { $('statPoll').checked ? startStatPoll() : stopStatPoll(); };
+$('statMs').onchange = () => { if (statTimer) startStatPoll(); };
+$('btnStat').onclick = () => send('STAT');
+$('btnInfo').onclick = () => send('INFO');
+// AUTO 중에는 펌웨어가 모터를 스스로 바꾸므로 STAT으로 따라간다
+function syncAutoPoll() {
+  if (state.auto && !autoTimer && transport) autoTimer = setInterval(() => { if (transport) send('STAT', true); }, 300);
+  if (!state.auto) stopAutoPoll();
+}
+function stopAutoPoll() { clearInterval(autoTimer); autoTimer = null; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  주행 정보 (추측 항법) — 엔코더가 없으므로 모터 출력 × 시간 × 보정 계수로 추정
+//  경로·로봇 자세·벽은 별도 2D 맵 없이 3D 트윈에 표시한다
+//  입력은 응답으로 갱신된 state.left/right 뿐이다 (보낸 명령이 아님)
+// ═══════════════════════════════════════════════════════════════════════════
+// 순수 함수: DOM과 무관, Node에서 시험 가능.
+// pose {x, y, th(rad), dist}, left/right -100..100, dt 초, cal {v100 cm/s, w cm, deadband %}
+function odometryStep(pose, left, right, dt, cal) {
+  const db = cal.deadband ?? 25;
+  const eff = p => (Math.abs(p) <= db ? 0 : p);          // 데드밴드 이하 출력은 궤도가 안 움직인다고 본다
+  const vL = eff(left) / 100 * cal.v100, vR = eff(right) / 100 * cal.v100;
+  const v = (vL + vR) / 2, w = (vR - vL) / cal.w;
+  const thMid = pose.th + w * dt / 2;                     // 중점 적분(곡선 주행 오차 감소)
+  return {
+    x: pose.x + v * Math.cos(thMid) * dt,
+    y: pose.y + v * Math.sin(thMid) * dt,
+    th: pose.th + w * dt,
+    dist: (pose.dist || 0) + Math.abs(v) * dt,
+  };
+}
+
+const ODO_DEFAULT = { v100: 20, w: 9, deadband: 25 };
+const LS_ODO = 'smars.odoCal';
+let odoCal = { ...ODO_DEFAULT };
+try {
+  const c = JSON.parse(localStorage.getItem(LS_ODO) || '{}');
+  for (const k of Object.keys(ODO_DEFAULT)) if (Number.isFinite(c[k]) && c[k] >= 0) odoCal[k] = c[k];
+} catch {}
+function saveOdoCal() { try { localStorage.setItem(LS_ODO, JSON.stringify(odoCal)); } catch {} }
+
+const MAP_MAX_PATH = 20000, MAP_MAX_OBST = 500;
+let pose = { x:0, y:0, th:0, dist:0 };
+let mapPath = [{ x:0, y:0 }];       // 트윈 재로딩 시 다시 그리기용 사본
+let mapObst = [];                    // {x, y, theta}
+let mapPaused = false, mapFollow = false, mapDirty = true;
+let odoLast = performance.now();
+
+// 트윈 호출 가드 (three.js 로딩 실패 시 twin=null, 구버전 twin이면 메서드 없음)
+function twinCall(name, ...args) {
+  if (!twin || typeof twin[name] !== 'function') return undefined;
+  try { return twin[name](...args); } catch (e) { console.error(`twin.${name}`, e); return undefined; }
+}
+const twinPose = () => ({ x: pose.x, y: pose.y, theta: pose.th });
+// 트윈이 늦게 로드되면 지금까지의 경로·벽·자세를 한 번에 넘긴다
+function mapSyncTwin() {
+  twinCall('clearPath'); twinCall('clearObstacles');
+  for (const p of mapPath) twinCall('addPathPoint', { x: p.x, y: p.y });
+  for (const o of mapObst) twinCall('addObstacle', o);
+  twinCall('setState', { pose: twinPose() });
+  twinCall('setFollow', mapFollow);
+}
+
+function mapReset() {
+  pose = { x:0, y:0, th:0, dist:0 };
+  mapPath = [{ x:0, y:0 }];
+  twinCall('clearPath');
+  twinCall('addPathPoint', { x:0, y:0 });
+  twinCall('setState', { pose: twinPose() });
+  mapDirty = true;
+}
+function mapAddObstacle(cm) {
+  if (mapPaused || cm == null || cm < 0) return;
+  // 초음파는 전방 고정: 현재 위치에서 진행 방향으로 cm 앞
+  const o = { x: pose.x + cm * Math.cos(pose.th), y: pose.y + cm * Math.sin(pose.th), theta: pose.th };
+  mapObst.push(o);
+  if (mapObst.length > MAP_MAX_OBST) mapObst.splice(0, mapObst.length - MAP_MAX_OBST);
+  twinCall('addObstacle', o);
+  mapDirty = true;
+}
+
+setInterval(() => {
+  const now = performance.now();
+  const dt = Math.min(1, (now - odoLast) / 1000);        // 백그라운드 탭에서 큰 dt 제한
+  odoLast = now;
+  if (mapPaused || (!state.left && !state.right)) return;
+  pose = odometryStep(pose, state.left, state.right, dt, odoCal);
+  twinCall('setState', { pose: twinPose() });
+  const last = mapPath[mapPath.length - 1];
+  if (Math.hypot(pose.x - last.x, pose.y - last.y) >= 0.5) {
+    const p = { x: pose.x, y: pose.y };
+    mapPath.push(p);
+    if (mapPath.length > MAP_MAX_PATH) mapPath.splice(0, mapPath.length - MAP_MAX_PATH);
+    twinCall('addPathPoint', p);
+  }
+  mapDirty = true;
+}, 50);
+
+function renderDriveInfo() {
+  const deg = ((pose.th * 180 / Math.PI) % 360 + 540) % 360 - 180;
+  $('mapTotal').textContent = `${pose.dist.toFixed(1)} cm`;
+  $('mapStraight').textContent = `${Math.hypot(pose.x, pose.y).toFixed(1)} cm`;
+  $('mapXY').textContent = `${pose.x.toFixed(1)}, ${pose.y.toFixed(1)}`;
+  $('mapHead').textContent = `${deg.toFixed(0)}°`;
+  $('mapObstN').textContent = `${mapObst.length} / ${MAP_MAX_OBST}`;
+}
+(function driveLoop() { if (mapDirty) { mapDirty = false; renderDriveInfo(); } requestAnimationFrame(driveLoop); })();
+
+$('btnMapReset').onclick = () => { mapReset(); log('주행 기록 원점 재설정', 'sys'); };
+$('btnMapObstClr').onclick = () => { mapObst = []; twinCall('clearObstacles'); mapDirty = true; };
+$('btnMapFit').onclick = () => {
+  mapFollow = false; twinCall('setFollow', false);
+  $('btnMapFollow').classList.remove('on');
+  twinCall('fitAll');
+};
+$('btnMapFollow').onclick = () => {
+  mapFollow = !mapFollow;
+  twinCall('setFollow', mapFollow);
+  $('btnMapFollow').classList.toggle('on', mapFollow);
+};
+$('btnMapPause').onclick = () => {
+  mapPaused = !mapPaused;
+  $('btnMapPause').textContent = mapPaused ? '기록 재개' : '기록 일시정지';
+  $('btnMapPause').classList.toggle('on', mapPaused);
+  odoLast = performance.now(); mapDirty = true;
+};
+$('btnMapPng').onclick = () => {
+  const url = twinCall('toDataURL');
+  if (!url || typeof url !== 'string' || !url.startsWith('data:image')) {
+    log(twin ? 'PNG 저장 실패: 트윈 캡처를 얻지 못했습니다.' : 'PNG 저장 불가: 3D 트윈이 로드되지 않았습니다.', 'err');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `smars_twin_${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.png`;
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+// 보정 입력 + 도우미
+function renderOdoCal() {
+  $('calV100').value = +odoCal.v100.toFixed(2); $('calW').value = +odoCal.w.toFixed(2); $('calDb').value = odoCal.deadband;
+}
+renderOdoCal();
+for (const [id, key] of [['calV100', 'v100'], ['calW', 'w'], ['calDb', 'deadband']]) {
+  $(id).addEventListener('change', () => {
+    const v = parseFloat($(id).value);
+    const ok = key === 'deadband' ? (v >= 0 && v < 100) : v > 0;
+    if (Number.isFinite(v) && ok) { odoCal[key] = v; saveOdoCal(); } else log(`보정값 ${key} 잘못됨: ${$(id).value}`, 'err');
+    renderOdoCal();
+  });
+}
+$('btnCalDefault').onclick = () => { odoCal = { ...ODO_DEFAULT }; saveOdoCal(); renderOdoCal(); };
+
+const CAL_PCT = 80;
+let calRunning = false;
+async function calRun(dir) {
+  // 1초 동안 200ms마다 MOVE 재전송(워치독 600ms 회피) 후 MOVE S
+  if (!transport || calRunning) return;
+  calRunning = true; $('btnCalFwd').disabled = $('btnCalSpin').disabled = true;
+  stopDrive(false); if (mTimer) stopMHold();
+  for (let t = 0; t < 1000 && transport; t += 200) { send(`MOVE ${dir} ${CAL_PCT}`, t > 0); await sleep(200); }
+  if (transport) send('MOVE S');
+  calRunning = false; $('btnCalFwd').disabled = $('btnCalSpin').disabled = !transport;
+}
+$('btnCalFwd').onclick = () => calRun('F');
+$('btnCalSpin').onclick = () => calRun('R');
+$('btnCalFwdSet').onclick = () => {
+  const cm = parseFloat($('calFwdCm').value);
+  if (!(cm > 0)) { log('실제 이동 거리(cm)를 입력하세요', 'err'); return; }
+  odoCal.v100 = cm / (CAL_PCT / 100) / 1.0;               // 1초 동안 80% 출력으로 cm 이동
+  saveOdoCal(); renderOdoCal(); log(`보정: V100 = ${odoCal.v100.toFixed(2)} cm/s`, 'sys');
+};
+$('btnCalSpinSet').onclick = () => {
+  const deg = parseFloat($('calSpinDeg').value);
+  if (!(deg > 0)) { log('실제 회전 각도(°)를 입력하세요', 'err'); return; }
+  // MOVE R 80: vL=+0.8·V100, vR=-0.8·V100 → |ω| = 1.6·V100 / W
+  odoCal.w = 2 * (CAL_PCT / 100) * odoCal.v100 * 1.0 / (deg * Math.PI / 180);
+  saveOdoCal(); renderOdoCal(); log(`보정: W = ${odoCal.w.toFixed(2)} cm`, 'sys');
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  주행 조작: D-pad / 조이스틱 모드
+// ═══════════════════════════════════════════════════════════════════════════
+// 순수 함수: 스틱 (x, y ∈ -1..1, 위=+y) → [L, R] (-100..100 정수). Node에서 시험 가능.
+function joyMix(x, y, speedPct, dead = 0.12) {
+  if (Math.hypot(x, y) <= dead) return [0, 0];
+  let L = y + x, R = y - x;
+  const m = Math.max(Math.abs(L), Math.abs(R));
+  if (m > 1) { L /= m; R /= m; }
+  return [Math.round(L * speedPct) || 0, Math.round(R * speedPct) || 0];   // -0 → 0
+}
+
+const LS_DRIVE_MODE = 'smars.driveMode';
+let driveMode = 'dpad';
+try { if (localStorage.getItem(LS_DRIVE_MODE) === 'joy') driveMode = 'joy'; } catch {}
+
+let joyActive = false, joyBlocked = false, joyTimer = null;
+let joyX = 0, joyY = 0, joyLastSent = null, joyLastAt = 0;
+const JOY_MIN_GAP = 60;      // 값이 바뀌어도 최소 60ms 간격 (BT 9600bps 큐 과부하 방지)
+const JOY_REPEAT = 200;      // 같은 값 유지 전송 (워치독 600ms)
+
+function joyCurrent() { return joyMix(joyX, joyY, speed()); }
+function joySend(force) {
+  if (!transport || !joyActive) return;
+  const [L, R] = joyCurrent();
+  if (joyBlocked && L > 0 && R > 0) return;            // 안전정지 후 전진 성분은 다시 잡을 때까지 보류
+  const now = performance.now();
+  const same = joyLastSent && joyLastSent[0] === L && joyLastSent[1] === R;
+  if (same && !force && now - joyLastAt < JOY_REPEAT) return;
+  if (!same && !force && now - joyLastAt < JOY_MIN_GAP) return;
+  joyLastSent = [L, R]; joyLastAt = now;
+  send(`M ${L} ${R}`, same);
+}
+function renderJoy() {
+  const k = $('joyKnob'), base = $('joyBase');
+  const rad = base.clientWidth / 2 - k.clientWidth / 2;
+  k.style.transform = `translate(calc(-50% + ${joyX * rad}px), calc(-50% + ${-joyY * rad}px))`;
+  const [L, R] = joyActive ? joyCurrent() : [0, 0];
+  const arrows = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'];
+  const mag = Math.hypot(joyX, joyY);
+  const arrow = mag <= 0.12 ? '●' : arrows[Math.round(Math.atan2(joyY, joyX) / (Math.PI / 4) + 8) % 8];
+  $('joyOut').textContent = `${arrow}  L ${L} / R ${R}${joyBlocked && L > 0 && R > 0 ? '  (안전정지: 다시 잡기)' : ''}`;
+  $('joyOut').style.color = joyBlocked && L > 0 && R > 0 ? 'var(--red)' : '';
+}
+function joyRelease(sendStop = true) {
+  const was = joyActive;
+  joyActive = false; joyX = 0; joyY = 0;
+  clearInterval(joyTimer); joyTimer = null;
+  $('joyBase').classList.remove('active');
+  renderJoy();
+  if (was && sendStop && transport) send('M 0 0');
+  joyLastSent = null;
+}
+{
+  const base = $('joyBase');
+  const setPos = e => {
+    const r = base.getBoundingClientRect();
+    const rad = r.width / 2;
+    let x = (e.clientX - (r.left + rad)) / rad, y = -(e.clientY - (r.top + rad)) / rad;
+    const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+    joyX = x; joyY = y;
+  };
+  base.addEventListener('pointerdown', e => {
+    if (!transport || handshaking || driveMode !== 'joy') return;
+    e.preventDefault();
+    base.setPointerCapture(e.pointerId);
+    if (driveDir) stopDrive(false);
+    if (mTimer) stopMHold();
+    joyActive = true; joyBlocked = false;              // 다시 잡으면 안전정지 보류 해제
+    base.classList.add('active');
+    setPos(e); renderJoy(); joySend(true);
+    clearInterval(joyTimer);
+    joyTimer = setInterval(() => joySend(false), JOY_REPEAT);
+  });
+  base.addEventListener('pointermove', e => {
+    if (!joyActive) return;
+    setPos(e); renderJoy(); joySend(false);
+  });
+  const up = () => { if (joyActive) joyRelease(true); };
+  base.addEventListener('pointerup', up);
+  base.addEventListener('pointercancel', up);
+  base.addEventListener('lostpointercapture', up);
+}
+// 안전정지 시 조이스틱 전진 성분 보류 (onSafeHold에서 호출)
+function joyOnSafeHold() {
+  if (!joyActive) return;
+  const [L, R] = joyCurrent();
+  joyBlocked = true;
+  if (L > 0 && R > 0) log('안전거리 이내 — 조이스틱 전진 전송을 멈췄습니다. 스틱을 놓았다 다시 잡으세요.', 'err');
+  renderJoy();
+}
+
+function setDriveMode(m, user) {
+  if (user && m !== driveMode) {
+    // 모드 전환: 진행 중인 반복 전송을 멈추고 MOVE S
+    held.length = 0;
+    if (driveDir) stopDrive(false);
+    if (joyActive) joyRelease(false);
+    if (transport) send('MOVE S');
+  }
+  driveMode = m;
+  try { localStorage.setItem(LS_DRIVE_MODE, m); } catch {}
+  $('modeDpadBtn').classList.toggle('active', m === 'dpad');
+  $('modeJoyBtn').classList.toggle('active', m === 'joy');
+  $('dpadPane').classList.toggle('hidden', m !== 'dpad');
+  $('joyPane').classList.toggle('hidden', m !== 'joy');
+  renderJoy();
+}
+$('modeDpadBtn').onclick = () => setDriveMode('dpad', true);
+$('modeJoyBtn').onclick = () => setDriveMode('joy', true);
+setDriveMode(driveMode, false);
+$('speed').addEventListener('input', () => { if (joyActive) { renderJoy(); joySend(false); } });
+
+// 레이아웃 변화(창 크기, 900px 경계에서 쌓기) → 트윈 크기 재계산
+if ('ResizeObserver' in window) {
+  new ResizeObserver(() => { twinCall('resize'); }).observe($('twinWrap'));
+}
+
+// URL 매개변수 ?sim=1 → 트윈 생성(또는 실패) 뒤 시뮬레이션 모드로 자동 연결
+if (new URLSearchParams(location.search).get('sim') === '1') {
+  twinReady.finally(() => {
+    if (transport || busy) return;
+    $('modeSel').value = 'sim';
+    updateModeUI();
+    log('?sim=1 — 시뮬레이션에 자동 연결합니다.', 'sys');
+    $('btnConnect').click();
+  });
+}
+</script>
+</body>
+</html>

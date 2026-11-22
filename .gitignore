@@ -1,0 +1,11 @@
+# 교사용 정답: 공개 저장소에 올리지 않음
+teacher/
+# 작업 기록·백업·스크린샷
+_workspace/
+# 개발용 하네스·작업 문서
+.claude/
+CLAUDE.md
+HANDOFF.md
+# 원본 문서·대용량 파일
+*.pptx
+*.docx
