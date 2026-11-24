@@ -1,0 +1,14 @@
+{
+  "note": "tools/sync_lesson.mjs 가 쓰는 마지막 동기화 기록(a1 = M1~M6 범위). 두 저장소에 같은 내용으로 둔다. 손으로 고치지 않는다.",
+  "files": {
+    "@tools/sync_lesson.mjs": "274edfcc8307e7b5",
+    "a1/a1.css": "fce9a072acdafa59",
+    "a1/a1.js": "a04d326249a80fa0",
+    "examples/m1_blink/m1_blink.ino": "192c639113ab8e6a",
+    "examples/m2_motor/m2_motor.ino": "1c9b6056553911ed",
+    "examples/m3_buzzer/m3_buzzer.ino": "803668476ba7dfe6",
+    "examples/m4_ultra/m4_ultra.ino": "d8984e341c997189",
+    "examples/m5_line/m5_line.ino": "079a87d32aa678ad",
+    "examples/m6_bt/m6_bt.ino": "c4d64fe102b28bd5"
+  }
+}
