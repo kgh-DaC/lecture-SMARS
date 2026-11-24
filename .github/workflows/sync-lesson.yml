@@ -13,13 +13,9 @@ on:
     branches: [main]
     paths:
       - 'a1/**'
-        if: steps.tok.outputs.ok == 'true'
       - 'examples/**'
-        if: steps.tok.outputs.ok == 'true'
       - 'tools/sync_lesson.mjs'
-        if: steps.tok.outputs.ok == 'true'
       - 'tools/sync_lesson.state.json'
-        if: steps.tok.outputs.ok == 'true'
   workflow_dispatch:
 permissions:
   contents: read
