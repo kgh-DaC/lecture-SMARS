@@ -13,9 +13,13 @@ on:
     branches: [main]
     paths:
       - 'a1/**'
+        if: steps.tok.outputs.ok == 'true'
       - 'examples/**'
+        if: steps.tok.outputs.ok == 'true'
       - 'tools/sync_lesson.mjs'
+        if: steps.tok.outputs.ok == 'true'
       - 'tools/sync_lesson.state.json'
+        if: steps.tok.outputs.ok == 'true'
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,27 +30,35 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: 토큰 설정 확인
+      - name: 토큰 설정 확인(없으면 건너뜀)
+        id: tok
         env:
           TOKEN: ${{ secrets.LESSON_SYNC_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "::error::LESSON_SYNC_TOKEN 시크릿이 없습니다. 이 파일 머리의 '한 번만 필요한 설정'을 따라 만들어 주세요."
-            exit 1
+            echo "::warning::LESSON_SYNC_TOKEN 시크릿이 없어 자동 동기화를 건너뜁니다. 로컬에서 node tools/sync_lesson.mjs 를 쓰거나, 이 파일 머리의 '한 번만 필요한 설정'을 따라 토큰을 넣어 주세요."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
+        if: steps.tok.outputs.ok == 'true'
         with:
           token: ${{ secrets.LESSON_SYNC_TOKEN }}
       - uses: actions/setup-node@v4
+        if: steps.tok.outputs.ok == 'true'
         with:
           node-version: 22
       - name: 볼앤빔 저장소 내려받기
+        if: steps.tok.outputs.ok == 'true'
         env:
           TOKEN: ${{ secrets.LESSON_SYNC_TOKEN }}
         run: git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/kgh-DaC/ball-and-beam.git" _bb
       - name: 동기화
+        if: steps.tok.outputs.ok == 'true'
         run: node tools/sync_lesson.mjs --other _bb
       - name: 양쪽 커밋·푸시(바뀐 것이 있을 때만)
+        if: steps.tok.outputs.ok == 'true'
         run: |
           set -e
           msg="교재 동기화: SMARS ${GITHUB_SHA::7} → 볼앤빔 a1장(app/smars-lesson)"
