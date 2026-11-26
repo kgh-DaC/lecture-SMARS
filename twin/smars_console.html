@@ -43,6 +43,12 @@ body{
 .wrap{width:100%;max-width:1180px;display:flex;flex-direction:column;gap:14px;}
 header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
 h1{font-size:1.3rem;letter-spacing:2px;color:var(--accent);}
+/* 제목 = 학습 페이지 링크(새 탭). 누를 수 있는 버튼처럼 보이게 */
+.lesson-link{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1.5px solid var(--accent);border-radius:999px;
+  color:var(--accent);text-decoration:none;letter-spacing:1px;transition:background .15s,color .15s;}
+.lesson-link:hover,.lesson-link:focus-visible{background:var(--accent);color:#0b0f14;text-decoration:underline;}
+.lesson-link .ext{font-size:.85em;}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
 .subtitle{color:var(--muted);font-size:.78rem;}
 
 .card{
@@ -236,8 +242,9 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
 <div class="wrap">
 
 <header>
-  <h1>SMARS 웹 콘솔</h1>
-  <span class="subtitle">디지털 트윈 · Web Serial 테스트 콘솔 · L298P 쉴드</span>
+  <h1><a class="lesson-link" href="https://kgh-dac.github.io/lecture-SMARS/lesson.html" target="_blank" rel="noopener"
+         title="SMARS 학습 페이지(lecture-SMARS)를 새 탭에서 엽니다">📘 SMARS 학습 페이지로 이동<span class="ext" aria-hidden="true">↗</span><span class="sr-only">(새 탭에서 열림)</span></a></h1>
+  <span class="subtitle">SMARS 웹 콘솔 · 디지털 트윈 · 테스트 콘솔 · L298P 쉴드</span>
 </header>
 
 <!-- 1. 주행 영역: 3D 트윈(왼쪽) + 조작 패널(오른쪽), 900px 미만이면 세로로 쌓음 -->
