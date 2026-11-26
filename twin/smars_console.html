@@ -7,7 +7,9 @@
   실행 방법
   - 파일을 더블클릭(file://)해서 열어도 됩니다. web/twin.js는 일반 <script>로 불러오고,
     three.js는 vendor/three-r160-bundle.js(로컬)를 쓰므로 인터넷이 없어도 됩니다(파일이 없으면 CDN으로 받음). (python -m http.server 로 열어도 동작)
-  - Web Serial은 Chrome / Edge 에서만 동작하며 localhost 에서도 사용할 수 있습니다.
+  - 기본 연결은 "블루투스 BLE"(Web Bluetooth, HM-10/HC-08/AT-09 계열 BLE UART 모듈, Otto와 같은 방식)입니다.
+    클래식 HC-05는 "블루투스 COM"(페어링 후 생긴 COM 포트)으로 연결합니다.
+  - Web Serial·Web Bluetooth는 Chrome / Edge 에서 동작하며 localhost·file:// 에서도 사용할 수 있습니다.
   - 장치가 없으면 연결 방식에서 "시뮬레이션"을 선택하세요 (가상 로봇이 같은 줄 규약으로 응답).
 -->
 <html lang="ko">
@@ -331,8 +333,9 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
     <div class="status-dot" id="statusDot"></div>
     <span id="statusTxt" class="grow muted">연결 안 됨</span>
     <select id="modeSel" title="통신 방식">
+      <option value="ble" selected>블루투스 BLE</option>
       <option value="serial">USB 시리얼</option>
-      <option value="bluetooth">블루투스 COM</option>
+      <option value="bluetooth">블루투스 COM (HC-05)</option>
       <option value="sim">시뮬레이션</option>
     </select>
     <select id="baudSel" title="보율">
@@ -348,7 +351,7 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
   </div>
   <div id="modeHelp" class="notice info"></div>
   <div id="noSerial" class="notice err hidden">
-    이 브라우저는 Web Serial을 지원하지 않습니다. Chrome 또는 Edge(데스크톱)에서 여세요. 지금은 시뮬레이션 모드만 사용할 수 있습니다.
+    이 브라우저는 Web Serial 또는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge에서 여세요. 쓸 수 없는 연결 방식은 목록에서 꺼집니다.
   </div>
   <div id="simBox" class="hidden">
     <div class="slider-row" style="grid-template-columns:130px 1fr 60px;">
@@ -760,6 +763,82 @@ class SerialTransport {
   }
 }
 
+// BLE UART 모듈(HM-10/HC-08/AT-09 계열) — Web Bluetooth. Otto(ottobot/web/js/ble-transport.js)에서 실측 검증한 방식과 같다.
+//  · 서비스 후보 FFE0 → FFF0 → Nordic UART, 특성은 속성(notify / write)으로 고른다(FFE1 notify + FFE2 write 변형 대응).
+//  · 한 번에 16바이트 이하로 나눠 쓴다(17바이트 이상이면 전달이 멈추는 모듈 실측).
+//  · 줄마다 30ms 쉰다: 로봇 SoftwareSerial은 반이중이라 연속 줄이 깨질 수 있다.
+const BLE_CHUNK = 16, BLE_LINE_GAP_MS = 30;
+const BLE_UART = [
+  { service: 0xffe0, rx: 0xffe1, tx: 0xffe1, label: 'HM-10/CC2541 (FFE0)' },
+  { service: 0xfff0, rx: 0xfff1, tx: 0xfff2, label: 'BT05/AT-09 (FFF0)' },
+  { service: '6e400001-b5a3-f393-e0a9-e50e24dcca9e', rx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e', tx: '6e400002-b5a3-f393-e0a9-e50e24dcca9e', label: 'Nordic UART' },
+];
+class BleTransport {
+  constructor(onLine, onLost) {
+    this.onLine = onLine; this.onLost = onLost; this.closing = false; this.buf = '';
+    this.dec = new TextDecoder();
+    this._notify = e => this.push(e.target.value);
+    this._gattLost = () => { if (!this.closing) this.onLost('블루투스 연결이 끊겼습니다. 로봇 전원과 거리를 확인하세요.'); };
+  }
+  async open(showAll) {
+    const optionalServices = BLE_UART.map(c => c.service);
+    try {
+      this.device = await navigator.bluetooth.requestDevice(showAll
+        ? { acceptAllDevices: true, optionalServices }
+        : { filters: [{ namePrefix: 'SMARS' }, { namePrefix: 'smars' }, { namePrefix: 'Smars' }, { services: [0xffe0] }, { services: [0xfff0] }], optionalServices });
+    } catch (e) {
+      if (e.name === 'NotFoundError') throw new Error('기기를 고르지 않았거나 찾지 못했습니다. 로봇 전원을 켜고 목록에서 로봇 이름(SMARS01 등)을 고르세요. 목록에 없으면 "모든 기기 보기"를 켜 보세요. 클래식 HC-05 모듈은 BLE 목록에 나오지 않으니 "블루투스 COM"을 쓰세요.');
+      throw e;
+    }
+    this.device.addEventListener('gattserverdisconnected', this._gattLost);
+    const server = await this.device.gatt.connect();
+    const services = await server.getPrimaryServices().catch(() => []);
+    const found = new Map(services.map(x => [x.uuid, x]));
+    const su = v => typeof v === 'number' ? BluetoothUUID.getService(v) : v;
+    const cu = v => typeof v === 'number' ? BluetoothUUID.getCharacteristic(v) : v;
+    for (const c of BLE_UART) {
+      const svc = found.get(su(c.service)); if (!svc) continue;
+      const chars = await svc.getCharacteristics().catch(() => []);
+      const canRx = x => x.properties.notify || x.properties.indicate;
+      const canTx = x => x.properties.writeWithoutResponse || x.properties.write;
+      const rx = chars.find(x => x.uuid === cu(c.rx) && canRx(x)) || chars.find(canRx);
+      const tx = chars.find(x => x.uuid === cu(c.tx) && canTx(x)) || chars.find(canTx);
+      if (rx && tx) {
+        this.rx = rx; this.tx = tx;
+        rx.addEventListener('characteristicvaluechanged', this._notify);
+        await rx.startNotifications();
+        log(`BLE ${this.device.name || '(이름 없음)'} — ${c.label}, 수신 ${rx.uuid.slice(4, 8)} / 송신 ${tx.uuid.slice(4, 8)}`, 'sys');
+        return;
+      }
+    }
+    try { server.disconnect(); } catch {}
+    throw new Error('BLE UART 서비스(FFE0/FFF0/Nordic)를 찾지 못했습니다. BLE 모듈이 맞는지 확인하세요.');
+  }
+  push(dv) {
+    this.buf += this.dec.decode(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength), { stream: true });
+    const parts = this.buf.split(/\r\n|\r|\n/);
+    this.buf = parts.pop();
+    for (const l of parts) { const t = l.trim(); if (t) this.onLine(t); }
+    if (this.buf.length > 512) this.buf = '';
+  }
+  async write(line) {
+    if (!this.tx) throw new Error('BLE 연결 안 됨');
+    const bytes = new TextEncoder().encode(line + '\n');
+    for (let i = 0; i < bytes.length; i += BLE_CHUNK) {
+      const part = bytes.slice(i, i + BLE_CHUNK);
+      if (this.tx.properties.writeWithoutResponse && this.tx.writeValueWithoutResponse) await this.tx.writeValueWithoutResponse(part);
+      else await this.tx.writeValue(part);
+    }
+    await sleep(BLE_LINE_GAP_MS);
+  }
+  async close() {
+    this.closing = true;
+    try { this.rx?.removeEventListener('characteristicvaluechanged', this._notify); await this.rx?.stopNotifications(); } catch {}
+    try { if (this.device?.gatt?.connected) this.device.gatt.disconnect(); } catch {}
+    this.rx = this.tx = null;
+  }
+}
+
 class SimRobot {
   // 펌웨어(smars-protocol "세부 동작 규칙" 포함)와 같은 줄 규약으로 응답하는 가상 로봇
   constructor(onLine, latencyMs, onObst) {
@@ -907,11 +986,13 @@ class SimRobot {
 //  연결 관리
 // ═══════════════════════════════════════════════════════════════════════════
 const hasSerial = 'serial' in navigator;
+const hasBle = 'bluetooth' in navigator;
 let transport = null, port = null, connMode = null, busy = false, handshaking = false;
 let txCount = 0, rxCount = 0, txChain = Promise.resolve();
 let lastRxLine = '';
 
 const MODE_HELP = {
+  ble: '로봇의 BLE 블루투스 모듈(HM-10/HC-08/AT-09 계열)에 브라우저가 직접 연결합니다. 윈도우 페어링·COM 포트가 필요 없습니다. "연결"을 누르고 목록에서 로봇 이름(예: SMARS01)을 고르세요. <label><input type="checkbox" id="bleAll"> 모든 기기 보기</label>',
   serial: 'USB 케이블로 연결된 아두이노의 COM 포트를 고르세요. 기본 57600 baud. 시리얼 모니터(아두이노 IDE)가 열려 있으면 포트를 열 수 없습니다.',
   bluetooth: 'HC-05를 윈도우에서 먼저 페어링한 뒤 생긴 "블루투스 COM 포트"(보통 송신용 포트)를 고르세요. 기본 9600 baud.',
   sim: '하드웨어 없이 가상 로봇에 연결합니다. 실제 장치와 같은 줄 규약과 같은 파서를 사용합니다.',
@@ -920,16 +1001,19 @@ function updateModeUI() {
   const m = $('modeSel').value;
   $('modeHelp').innerHTML = MODE_HELP[m]
     + (location.protocol === 'file:' ? ' · 3D 트윈이 보이지 않으면 vendor/three-r160-bundle.js와 web/twin.js 위치를 확인하세요.' : '');
-  $('baudSel').disabled = m === 'sim' || !!transport;
+  $('baudSel').disabled = m === 'sim' || m === 'ble' || !!transport;
   if (m === 'serial') $('baudSel').value = '57600';
   if (m === 'bluetooth') $('baudSel').value = '9600';
   $('simBox').classList.toggle('hidden', m !== 'sim');
 }
 $('modeSel').onchange = updateModeUI;
-if (!hasSerial) {
+if (!hasSerial || !hasBle) {
   $('noSerial').classList.remove('hidden');
-  for (const o of $('modeSel').options) if (o.value !== 'sim') o.disabled = true;
-  $('modeSel').value = 'sim';
+  for (const o of $('modeSel').options) {
+    if (o.value === 'ble' && !hasBle) o.disabled = true;
+    if ((o.value === 'serial' || o.value === 'bluetooth') && !hasSerial) o.disabled = true;
+  }
+  if ($('modeSel').selectedOptions[0]?.disabled) $('modeSel').value = hasSerial ? 'serial' : 'sim';
 }
 updateModeUI();
 
@@ -938,18 +1022,18 @@ function setConnUI() {
   $('btnConnect').disabled = on || busy;
   $('btnDisconnect').disabled = !on || busy;
   $('modeSel').disabled = on || busy;
-  $('baudSel').disabled = on || busy || $('modeSel').value === 'sim';
+  $('baudSel').disabled = on || busy || $('modeSel').value === 'sim' || $('modeSel').value === 'ble';
   // 핸드셰이크(PONG 또는 실패)가 끝날 때까지 테스트 버튼은 잠근다
   document.querySelectorAll('.needs-conn').forEach(el => { el.disabled = !on || handshaking; });
   $('connHint').classList.toggle('hidden', on);
   $('joyBase').classList.toggle('off', !on || handshaking);
   const dot = $('statusDot');
   dot.className = 'status-dot' + (busy ? ' checking' : on ? (connMode === 'sim' ? ' sim' : ' connected') : '');
-  const label = { serial:'USB 시리얼', bluetooth:'블루투스 COM', sim:'시뮬레이션' }[connMode] || '';
+  const label = { ble:'블루투스 BLE', serial:'USB 시리얼', bluetooth:'블루투스 COM', sim:'시뮬레이션' }[connMode] || '';
   $('statusTxt').textContent = busy ? '처리 중…' : on ? `연결됨 — ${label}` : '연결 안 됨';
   $('sPort').textContent = on ? '열림' : '닫힘';
   $('sPort').className = 'stat-val ' + (on ? 'ok' : 'err');
-  $('sBaud').textContent = on ? (connMode === 'sim' ? '가상' : $('baudSel').value) : '—';
+  $('sBaud').textContent = on ? (connMode === 'sim' ? '가상' : connMode === 'ble' ? 'BLE' : $('baudSel').value) : '—';
 }
 setConnUI();
 
@@ -969,6 +1053,12 @@ $('btnConnect').onclick = async () => {
         $('simObst').value = Math.round(v); $('simObstVal').textContent = `${Math.round(v)}cm`;
       });
       log('시뮬레이션 로봇에 연결', 'sys');
+    } else if (mode === 'ble') {
+      if (!hasBle) throw new Error('Web Bluetooth 미지원 브라우저');
+      const t = new BleTransport(handleLine, reason => onDeviceLost(reason));
+      try { await t.open(!!document.getElementById('bleAll')?.checked); }
+      catch (e) { await t.close(); throw e; }
+      transport = t;
     } else {
       if (!hasSerial) throw new Error('Web Serial 미지원 브라우저');
       const baud = parseInt($('baudSel').value, 10);
@@ -980,7 +1070,7 @@ $('btnConnect').onclick = async () => {
     }
     connMode = mode;
     txCount = rxCount = 0; txChain = Promise.resolve();
-    state.connected = true; state.linkType = mode; state.safeStop = false;
+    state.connected = true; state.linkType = mode === 'ble' ? 'bluetooth' : mode; state.safeStop = false;   // 트윈은 BLE도 BT 경로로 표시
     pushState();
   } catch (e) {
     transport = null; port = null;
@@ -1077,7 +1167,7 @@ function send(line, quiet = false) {
       if (!(quiet && $('hideRepeat').checked)) log(`→ ${line}`, 'tx');
     } catch (e) {
       log(`전송 오류 (${line}): ${e.message}`, 'err');
-      if (t instanceof SerialTransport) setTimeout(() => onDeviceLost('전송 오류로 연결을 정리합니다.'), 0);
+      if (t instanceof SerialTransport || t instanceof BleTransport) setTimeout(() => onDeviceLost('전송 오류로 연결을 정리합니다.'), 0);
     }
   });
   return txChain;
@@ -1131,7 +1221,7 @@ function handleLine(raw) {
     case 'LINK': {
       const via = sub;
       $('sLink').textContent = via || '?';
-      const expect = connMode === 'bluetooth' ? 'BT' : connMode === 'serial' ? 'USB' : null;
+      const expect = (connMode === 'bluetooth' || connMode === 'ble') ? 'BT' : connMode === 'serial' ? 'USB' : null;
       const mismatch = expect && via && via !== expect;
       $('sLink').className = 'stat-val ' + (mismatch ? 'warn' : 'ok');
       if (mismatch) log(`경로 불일치: 선택한 방식은 ${expect}인데 펌웨어는 ${via}로 받았다고 응답했습니다.`, 'err');
