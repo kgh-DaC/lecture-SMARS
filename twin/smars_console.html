@@ -8,7 +8,7 @@
   - 파일을 더블클릭(file://)해서 열어도 됩니다. web/twin.js는 일반 <script>로 불러오고,
     three.js는 vendor/three-r160-bundle.js(로컬)를 쓰므로 인터넷이 없어도 됩니다(파일이 없으면 CDN으로 받음). (python -m http.server 로 열어도 동작)
   - 기본 연결은 "블루투스 BLE"(Web Bluetooth, HM-10/HC-08/AT-09 계열 BLE UART 모듈, Otto와 같은 방식)입니다.
-    클래식 HC-05는 "블루투스 COM"(페어링 후 생긴 COM 포트)으로 연결합니다.
+    블루투스는 BLE만 지원합니다(클래식 HC-05의 "블루투스 COM" 방식은 2026-11-26 삭제).
   - Web Serial·Web Bluetooth는 Chrome / Edge 에서 동작하며 localhost·file:// 에서도 사용할 수 있습니다.
   - 장치가 없으면 연결 방식에서 "시뮬레이션"을 선택하세요 (가상 로봇이 같은 줄 규약으로 응답).
 -->
@@ -335,7 +335,6 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
     <select id="modeSel" title="통신 방식">
       <option value="ble" selected>블루투스 BLE</option>
       <option value="serial">USB 시리얼</option>
-      <option value="bluetooth">블루투스 COM (HC-05)</option>
       <option value="sim">시뮬레이션</option>
     </select>
     <select id="baudSel" title="보율">
@@ -443,7 +442,7 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
       <input type="text" id="termIn" class="grow needs-conn" placeholder="예: STAT, MOVE F 50, BUZ 1 300" disabled autocomplete="off">
       <button class="btn needs-conn" id="btnTerm" disabled>전송</button>
     </div>
-    <div class="muted">HC-05는 윈도우 "블루투스 COM 포트"로 연결합니다(클래식 SPP는 Web Bluetooth로 접속 불가).</div>
+    <div class="muted">블루투스는 BLE 모듈(HM-10/HC-08/AT-09 계열)로 연결합니다. 클래식 HC-05(SPP)는 Web Bluetooth로 접속할 수 없습니다.</div>
   </section>
 
   <!-- 상태/진단 -->
@@ -787,7 +786,7 @@ class BleTransport {
         ? { acceptAllDevices: true, optionalServices }
         : { filters: [{ namePrefix: 'SMARS' }, { namePrefix: 'smars' }, { namePrefix: 'Smars' }, { services: [0xffe0] }, { services: [0xfff0] }], optionalServices });
     } catch (e) {
-      if (e.name === 'NotFoundError') throw new Error('기기를 고르지 않았거나 찾지 못했습니다. 로봇 전원을 켜고 목록에서 로봇 이름(SMARS01 등)을 고르세요. 목록에 없으면 "모든 기기 보기"를 켜 보세요. 클래식 HC-05 모듈은 BLE 목록에 나오지 않으니 "블루투스 COM"을 쓰세요.');
+      if (e.name === 'NotFoundError') throw new Error('기기를 고르지 않았거나 찾지 못했습니다. 로봇 전원을 켜고 목록에서 로봇 이름(SMARS01 등)을 고르세요. 목록에 없으면 "모든 기기 보기"를 켜 보세요. 클래식 HC-05 모듈은 BLE 목록에 나오지 않습니다(BLE 모듈로 교체 필요).');
       throw e;
     }
     this.device.addEventListener('gattserverdisconnected', this._gattLost);
@@ -994,7 +993,6 @@ let lastRxLine = '';
 const MODE_HELP = {
   ble: '로봇의 BLE 블루투스 모듈(HM-10/HC-08/AT-09 계열)에 브라우저가 직접 연결합니다. 윈도우 페어링·COM 포트가 필요 없습니다. "연결"을 누르고 목록에서 로봇 이름(예: SMARS01)을 고르세요. <label><input type="checkbox" id="bleAll"> 모든 기기 보기</label>',
   serial: 'USB 케이블로 연결된 아두이노의 COM 포트를 고르세요. 기본 57600 baud. 시리얼 모니터(아두이노 IDE)가 열려 있으면 포트를 열 수 없습니다.',
-  bluetooth: 'HC-05를 윈도우에서 먼저 페어링한 뒤 생긴 "블루투스 COM 포트"(보통 송신용 포트)를 고르세요. 기본 9600 baud.',
   sim: '하드웨어 없이 가상 로봇에 연결합니다. 실제 장치와 같은 줄 규약과 같은 파서를 사용합니다.',
 };
 function updateModeUI() {
@@ -1003,7 +1001,6 @@ function updateModeUI() {
     + (location.protocol === 'file:' ? ' · 3D 트윈이 보이지 않으면 vendor/three-r160-bundle.js와 web/twin.js 위치를 확인하세요.' : '');
   $('baudSel').disabled = m === 'sim' || m === 'ble' || !!transport;
   if (m === 'serial') $('baudSel').value = '57600';
-  if (m === 'bluetooth') $('baudSel').value = '9600';
   $('simBox').classList.toggle('hidden', m !== 'sim');
 }
 $('modeSel').onchange = updateModeUI;
@@ -1011,7 +1008,7 @@ if (!hasSerial || !hasBle) {
   $('noSerial').classList.remove('hidden');
   for (const o of $('modeSel').options) {
     if (o.value === 'ble' && !hasBle) o.disabled = true;
-    if ((o.value === 'serial' || o.value === 'bluetooth') && !hasSerial) o.disabled = true;
+    if (o.value === 'serial' && !hasSerial) o.disabled = true;
   }
   if ($('modeSel').selectedOptions[0]?.disabled) $('modeSel').value = hasSerial ? 'serial' : 'sim';
 }
@@ -1029,7 +1026,7 @@ function setConnUI() {
   $('joyBase').classList.toggle('off', !on || handshaking);
   const dot = $('statusDot');
   dot.className = 'status-dot' + (busy ? ' checking' : on ? (connMode === 'sim' ? ' sim' : ' connected') : '');
-  const label = { ble:'블루투스 BLE', serial:'USB 시리얼', bluetooth:'블루투스 COM', sim:'시뮬레이션' }[connMode] || '';
+  const label = { ble:'블루투스 BLE', serial:'USB 시리얼', sim:'시뮬레이션' }[connMode] || '';
   $('statusTxt').textContent = busy ? '처리 중…' : on ? `연결됨 — ${label}` : '연결 안 됨';
   $('sPort').textContent = on ? '열림' : '닫힘';
   $('sPort').className = 'stat-val ' + (on ? 'ok' : 'err');
@@ -1066,7 +1063,7 @@ $('btnConnect').onclick = async () => {
       const t = new SerialTransport(port, handleLine, reason => onDeviceLost(reason));
       await t.open(baud);
       transport = t;
-      log(`포트 열림 (${mode === 'bluetooth' ? '블루투스 COM' : 'USB'}, ${baud} baud)`, 'sys');
+      log(`포트 열림 (USB, ${baud} baud)`, 'sys');
     }
     connMode = mode;
     txCount = rxCount = 0; txChain = Promise.resolve();
@@ -1221,7 +1218,7 @@ function handleLine(raw) {
     case 'LINK': {
       const via = sub;
       $('sLink').textContent = via || '?';
-      const expect = (connMode === 'bluetooth' || connMode === 'ble') ? 'BT' : connMode === 'serial' ? 'USB' : null;
+      const expect = connMode === 'ble' ? 'BT' : connMode === 'serial' ? 'USB' : null;
       const mismatch = expect && via && via !== expect;
       $('sLink').className = 'stat-val ' + (mismatch ? 'warn' : 'ok');
       if (mismatch) log(`경로 불일치: 선택한 방식은 ${expect}인데 펌웨어는 ${via}로 받았다고 응답했습니다.`, 'err');
