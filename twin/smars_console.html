@@ -501,8 +501,8 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
 <section class="card">
   <h2>핀 연결 (L298P 쉴드 + 아두이노 우노)</h2>
   <div class="notice" id="pinWarn"></div>
-  <svg id="shieldSvg" viewBox="0 0 900 400" role="img" aria-label="L298P 쉴드 단자와 연결된 아두이노 우노 핀"></svg>
-  <div class="muted" style="text-align:center">L298P 쉴드를 우노 위에 꽂은 상태의 개념도(실제 부품 위치와 다를 수 있음). 각 단자 옆 굵은 글씨가 연결된 <b>아두이노 우노 핀</b>이고, 빨간 테두리는 두 기능이 같은 핀을 쓰는 곳입니다. 단자에 마우스를 올리면 설명이 나옵니다.</div>
+  <svg id="shieldSvg" viewBox="0 0 900 560" role="img" aria-label="L298P 쉴드를 위에서 본 배치와 단자별 아두이노 우노 핀"></svg>
+  <div class="muted" style="text-align:center">실물 L298P 쉴드(Keyestudio/Funduino형)를 위에서 본 배치입니다. 위쪽 끝이 모터(MA·MB)·전원(VMS·GND) 나사 단자, 오른쪽이 디지털 헤더(아래 끝 D0·D1), 왼쪽이 전원·아날로그 헤더입니다. 색칠된 핀과 글씨가 연결된 <b>아두이노 우노 핀</b>이고, 빨간 테두리는 두 기능이 같은 핀을 쓰는 곳입니다. 핀에 마우스를 올리면 설명이 나옵니다.</div>
   <div class="legend" id="pinLegend"></div>
   <div class="table-scroll">
     <table class="pintable">
@@ -588,9 +588,9 @@ function buildPinmap(c) {
     { id:'line', func:'적외선 라인 센서', where:'외부 모듈 → 쉴드 위 우노 핀 헤더', color:'#e8eaf6',
       pins:[{ t:'DO', p:P(c.line), sig:'DO — 디지털 출력', note:'fw=3 이상, 1 = 검정 기본 · 반전 가능' },
             { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
-    { id:'bt', func:'블루투스 HC-05', where:'외부 모듈 → 쉴드 위 A0·A1 헤더', color:'#b48cf7',
-      pins:[{ t:'RXD←', p:'A1', pl:'A1 (아두이노 TX)', sig:'HC-05 RXD(받는 단자) ← 아두이노 TX', note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)' },
-            { t:'TXD→', p:'A0', pl:'A0 (아두이노 RX)', sig:'HC-05 TXD(보내는 단자) → 아두이노 RX', note:'고정 · 9600bps' },
+    { id:'bt', func:'블루투스 HC-05', where:'외부 모듈 → 쉴드 bluetooth 헤더 (A0·A1)', color:'#b48cf7',
+      pins:[{ t:'RXD←', p:'A0', pl:'A0 (아두이노 TX)', sig:'HC-05 RXD(받는 단자) ← 아두이노 TX', note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)' },
+            { t:'TXD→', p:'A1', pl:'A1 (아두이노 RX)', sig:'HC-05 TXD(보내는 단자) → 아두이노 RX', note:'고정 · 9600bps' },
             { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
     { id:'usb', func:'USB', where:'우노 USB 단자 (쉴드는 사용 안 함)', color:'#f7a64f',
       pins:[{ t:'RX', p:'D0', sig:'아두이노 수신', note:'업로드·시리얼 모니터와 공유 · 고정' }, { t:'TX', p:'D1', sig:'아두이노 송신', note:'57600bps' }] },
@@ -630,59 +630,118 @@ function renderPins() {
   $('pinLegend').innerHTML = PINMAP.map(e => `<span><span class="swatch" style="background:${e.color}"></span>${e.func}</span>`).join('')
     + `<span><span class="swatch" style="background:#0d1118;border:2px solid #f74f4f"></span>공유 핀(충돌 주의)</span>`;
 
-  // L298P 쉴드 개념도: 쉴드 단자마다 연결된 우노 핀을 표시
+  // L298P 쉴드 그림: 실물 사진(Keyestudio/Funduino형 L298P 쉴드)과 같은 방향으로 위에서 본 배치.
+  // 위쪽 끝 = 모터·전원 나사 단자(우노 USB 쪽), 오른쪽 = 디지털 헤더(아래 끝 D0/D1), 왼쪽 = 전원·아날로그 헤더.
   const users = {};
-  for (const e of PINMAP) for (const p of e.pins) if (/^[DA]\d/.test(p.p)) (users[p.p] ||= []).push(p);
+  for (const e of PINMAP) for (const p of e.pins) if (/^[DA]\d/.test(p.p)) (users[p.p] ||= []).push({ e, p });
   const byId = id => PINMAP.find(e => e.id === id);
   const F = 'font-family="Segoe UI,sans-serif"', M = 'font-family="Consolas,monospace"';
-  const block = (x, y, w, title, e, sub) => {
-    const color = e ? e.color : '#9aa3ad', rows = e ? e.pins : sub;
-    const h = 30 + rows.length * 22;
-    let o = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#0d1118" fill-opacity=".72" stroke="${color}" stroke-width="1.5"/>`
-      + `<text x="${x + 10}" y="${y + 19}" fill="${color}" font-size="12.5" font-weight="700" ${F}>${title}</text>`;
+  const PWR_COL = { '5V':'#f783ac', 'GND':'#5c6370', 'VIN':'#e03131', '3.3V':'#f783ac' };
+  const pinCol = l => { const a = (users[l] || []).filter(z => !z.p.unused); return a.length > 1 ? '#f74f4f' : a.length ? a[0].e.color : null; };
+  const pinTip = l => { const u = users[l] || []; return u.length ? u.map(z => `${z.e.func} ${z.p.t}${z.p.unused ? '(미사용)' : ''}`).join(', ') : '사용 안 함'; };
+  const pinSq = (x, y, l, fillOverride) => {
+    const u = users[l] || [], c = fillOverride || pinCol(l) || PWR_COL[l] && '#1d2433' || '#0d1118';
+    return `<g><title>${escHtml(`${l}: ${pinTip(l)}`)}</title><rect x="${x}" y="${y}" width="14" height="14" rx="2" fill="${c}" stroke="${u.length > 1 ? '#f74f4f' : '#8aa0b8'}" stroke-width="${u.length > 1 ? 2.5 : 1}"/>`
+      + `<circle cx="${x + 7}" cy="${y + 7}" r="2.6" fill="#000" opacity=".55"/></g>`;
+  };
+  const block = (x, y, w, title, e, wireTo) => {
+    const rows = e.pins, h = 30 + rows.length * 22;
+    let o = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#0d1118" fill-opacity=".85" stroke="${e.color}" stroke-width="1.5"/>`
+      + `<text x="${x + 10}" y="${y + 19}" fill="${e.color}" font-size="12.5" font-weight="700" ${F}>${title}</text>`;
     rows.forEach((p, i) => {
-      const ry = y + 30 + i * 22;
-      const u = users[p.p] || [], active = u.filter(z => !z.unused);
-      const shared = u.length > 1, clash = active.length > 1;
+      const ry = y + 30 + i * 22, u = users[p.p] || [];
       const pinTxt = p.pl ? p.pl.replace('아두이노 ', '') : p.p;
       const pw = Math.max(34, pinTxt.length * 7.2 + 12);
-      const pillFill = clash ? '#f74f4f' : p.unused ? '#2a2d3e' : /^[DA]\d/.test(p.p) ? color : p.p === '5V' ? '#f783ac' : '#5c6370';
-      const tip = `${(e && e.func) || title} ${p.t}: ${p.sig || ''} → 우노 ${p.pl || p.p}${p.unused ? ' (미사용)' : ''}${shared ? ' · 다른 기능과 같은 핀' : ''}`;
-      o += `<g><title>${escHtml(tip)}</title>`
-        + `<rect x="${x + 10}" y="${ry}" width="14" height="14" rx="2" fill="${p.unused ? '#2a2d3e' : color}" stroke="#fff" stroke-opacity=".5"/>`
-        + `<circle cx="${x + 17}" cy="${ry + 7}" r="3" fill="#000" opacity=".55"/>`
-        + `<text x="${x + 30}" y="${ry + 11.5}" fill="${p.unused ? '#7a8aa0' : '#e8eaf6'}" font-size="11.5" ${M}>${escHtml(p.t)}</text>`
-        + `<rect x="${x + w - pw - 8}" y="${ry - 1}" width="${pw}" height="16" rx="8" fill="${pillFill}" stroke="${shared ? '#f74f4f' : 'none'}" stroke-width="2.5"/>`
+      const fill = p.unused ? '#2a2d3e' : /^[DA]\d/.test(p.p) ? (pinCol(p.p) || e.color) : (PWR_COL[p.p] || '#5c6370');
+      o += `<g><title>${escHtml(`${e.func} ${p.t}: ${p.sig || ''} → 우노 ${p.pl || p.p}${p.unused ? ' (미사용)' : ''}`)}</title>`
+        + `<text x="${x + 10}" y="${ry + 11.5}" fill="${p.unused ? '#7a8aa0' : '#e8eaf6'}" font-size="11.5" ${M}>${escHtml(p.t)}</text>`
+        + `<rect x="${x + w - pw - 8}" y="${ry - 1}" width="${pw}" height="16" rx="8" fill="${fill}" stroke="${u.length > 1 ? '#f74f4f' : 'none'}" stroke-width="2.5"/>`
         + `<text x="${x + w - 8 - pw / 2}" y="${ry + 11}" text-anchor="middle" fill="${p.unused ? '#9aa3ad' : '#0b0f14'}" font-size="11" font-weight="700" ${M}>${escHtml(pinTxt)}</text></g>`;
+      const to = wireTo && /^[DA]\d/.test(p.p) && PIN_XY[p.p];
+      if (to && !p.unused) {
+        const left = to.x < x, sx = left ? x : x + w, sy = ry + 7, tx = left ? to.x + 14 : to.x;
+        o += wire(sx, sy, tx, to.y + 7, e.color);
+      }
     });
     return o;
   };
-  const wire = (x1, y1, x2, y2, color) => `<path d="M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="5 4" opacity=".8"/>`;
-  const term = (x, y, labels, color) => labels.map((l, i) => `<rect x="${x}" y="${y + i * 20}" width="18" height="18" rx="2" fill="#2f9e44" stroke="#1b5e20"/><circle cx="${x + 9}" cy="${y + 9 + i * 20}" r="5" fill="#c9ced6" stroke="#555"/>`).join('')
-    + `<text x="${x + 9}" y="${y - 6}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="700" ${M}>${labels.join('/')}</text>`;
-  const mot = (x, y, txt, color) => `<rect x="${x}" y="${y}" width="140" height="44" rx="8" fill="#0d1118" stroke="${color}" stroke-dasharray="4 3"/>`
-    + `<text x="${x + 70}" y="${y + 27}" text-anchor="middle" fill="${color}" font-size="12.5" font-weight="700" ${F}>${txt}</text>`;
+  const wire = (x1, y1, x2, y2, color) => `<path d="M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="1.6" stroke-dasharray="5 4" opacity=".85"/>`;
 
-  let s = `<rect x="180" y="40" width="540" height="330" rx="14" fill="#1c3f6e" stroke="#3b6aa0" stroke-width="1.5"/>`
-    + `<text x="450" y="358" text-anchor="middle" fill="#7fb2d9" font-size="13" font-weight="700" letter-spacing="1" ${F}>L298P 모터 쉴드 (아두이노 우노 위에 꽂음)</text>`;
-  // L298P 칩
-  s += `<rect x="385" y="70" width="130" height="80" rx="6" fill="#111" stroke="#666"/>`
-    + Array.from({ length: 7 }, (_, i) => `<rect x="${398 + i * 17}" y="58" width="6" height="12" fill="#888"/>`).join('')
-    + `<text x="450" y="108" text-anchor="middle" fill="#e8eaf6" font-size="17" font-weight="700" ${F}>L298P</text>`
-    + `<text x="450" y="128" text-anchor="middle" fill="#8a93a6" font-size="10.5" ${F}>모터 드라이버 (A·B 2채널)</text>`;
-  // 모터 제어 블록과 나사 단자
-  s += block(195, 60, 175, 'MOTOR B · 왼쪽', byId('motorL')) + block(530, 60, 175, 'MOTOR A · 오른쪽', byId('motorR'));
-  s += term(184, 170, ['B+', 'B−'], '#4f8ef7') + term(698, 170, ['A+', 'A−'], '#4fcf83');
-  // 부저, + R T G 헤더, 외부 전원 단자
-  s += block(210, 240, 150, '부저 (온보드)', byId('buz'));
-  s += block(375, 180, 150, '초음파 헤더 + R T G', byId('us'));
-  s += block(545, 240, 150, '외부 전원 단자', null, [{ t:'+', p:'VIN', sig:'모터 전원(배터리 +)' }, { t:'−', p:'GND', sig:'배터리 −' }]);
-  // 바깥: 모터, USB, HC-05, 라인 센서
-  s += mot(15, 168, '왼쪽 모터 (DC)', '#4f8ef7') + wire(155, 190, 184, 189, '#4f8ef7');
-  s += mot(745, 168, '오른쪽 모터 (DC)', '#4fcf83') + wire(716, 189, 745, 190, '#4fcf83');
-  s += block(15, 270, 140, 'USB (우노)', byId('usb')) + wire(155, 300, 180, 300, '#f7a64f');
-  s += block(735, 20, 160, 'HC-05 (외부)', byId('bt')) + wire(735, 70, 720, 70, '#b48cf7');
-  s += block(735, 268, 160, '라인 센서 (외부)', byId('line')) + wire(735, 310, 720, 310, '#e8eaf6');
+  // 우노 헤더(쉴드가 그대로 이어 줌): 핀 위치표
+  const PIN_XY = {};
+  const DIG = ['SCL','SDA','AREF','GND','D13','D12','D11','D10','D9','D8',null,'D7','D6','D5','D4','D3','D2','D1','D0'];
+  const ANA = ['IOREF','RESET','3.3V','5V','GND','GND','VIN',null,'A0','A1','A2','A3','A4','A5'];
+  let s = `<rect x="300" y="80" width="300" height="470" rx="12" fill="#1c4f8a" stroke="#5b8fd0" stroke-width="1.5"/>`;
+  let y = 150;
+  for (const l of DIG) {
+    if (!l) { y += 10; continue; }
+    if (!PIN_XY[l]) PIN_XY[l] = { x: 572, y };
+    s += pinSq(572, y, l) + `<text x="566" y="${y + 11}" text-anchor="end" fill="${pinCol(l) ? '#e8eaf6' : '#9fb3cc'}" font-size="10" font-weight="${pinCol(l) ? 700 : 400}" ${M}>${l === 'D0' ? 'RX D0' : l === 'D1' ? 'TX D1' : l}</text>`;
+    y += 17;
+  }
+  y = 210;
+  for (const l of ANA) {
+    if (!l) { y += 10; continue; }
+    if (!PIN_XY[l]) PIN_XY[l] = { x: 310, y };
+    s += pinSq(310, y, l) + `<text x="330" y="${y + 11}" fill="${pinCol(l) ? '#e8eaf6' : '#9fb3cc'}" font-size="10" font-weight="${pinCol(l) ? 700 : 400}" ${M}>${l}</text>`;
+    y += 17;
+  }
+  s += `<text x="581" y="142" text-anchor="middle" fill="#9fb3cc" font-size="9.5" ${F}>디지털</text><text x="317" y="202" text-anchor="middle" fill="#9fb3cc" font-size="9.5" ${F}>전원</text>`;
+
+  // 위쪽 끝: 모터 나사 단자(MA·MB), 전원 단자(VMS·GND), 리셋 버튼
+  const screw = (x, lbl, col) => `<rect x="${x}" y="58" width="24" height="34" rx="3" fill="#1e88e5" stroke="#0d47a1"/><circle cx="${x + 12}" cy="70" r="7" fill="#cfd8dc" stroke="#546e7a"/><line x1="${x + 7}" y1="70" x2="${x + 17}" y2="70" stroke="#546e7a" stroke-width="2"/>`
+    + `<text x="${x + 12}" y="106" text-anchor="middle" fill="${col}" font-size="10" font-weight="700" ${M}>${lbl}</text>`;
+  s += screw(400, 'A+', '#4fcf83') + screw(426, 'A−', '#4fcf83') + screw(452, 'B+', '#4f8ef7') + screw(478, 'B−', '#4f8ef7')
+    + `<text x="426" y="120" text-anchor="middle" fill="#4fcf83" font-size="10.5" font-weight="700" ${F}>MA</text><text x="478" y="120" text-anchor="middle" fill="#4f8ef7" font-size="10.5" font-weight="700" ${F}>MB</text>`;
+  s += screw(522, 'VMS', '#ff8787') + screw(548, 'GND', '#adb5bd')
+    + `<text x="548" y="120" text-anchor="middle" fill="#ffa8a8" font-size="9.5" ${F}>모터 전원</text>`;
+  s += `<rect x="346" y="92" width="22" height="22" rx="3" fill="#333" stroke="#777"/><circle cx="357" cy="103" r="6" fill="#111"/><text x="357" y="126" text-anchor="middle" fill="#9fb3cc" font-size="9" ${F}>RESET</text>`;
+  // 전원 점퍼·콘덴서, 74HC00, L298P 칩
+  s += `<circle cx="365" cy="160" r="13" fill="#263238" stroke="#90a4ae"/><rect x="386" y="148" width="14" height="24" rx="2" fill="#2e7d32"/><text x="393" y="186" text-anchor="middle" fill="#9fb3cc" font-size="9" ${F}>전원 점퍼</text>`;
+  s += `<rect x="420" y="284" width="52" height="22" rx="2" fill="#111" stroke="#555"/><text x="446" y="299" text-anchor="middle" fill="#aaa" font-size="9" ${M}>74HC00</text>`;
+  s += `<rect x="410" y="185" width="110" height="80" rx="4" fill="#111" stroke="#666"/>`
+    + Array.from({ length: 8 }, (_, i) => `<rect x="${416 + i * 13}" y="265" width="5" height="8" fill="#999"/>`).join('')
+    + `<text x="465" y="222" text-anchor="middle" fill="#e8eaf6" font-size="17" font-weight="700" ${F}>L298P</text>`
+    + `<text x="465" y="242" text-anchor="middle" fill="#8a93a6" font-size="9.5" ${F}>모터 드라이버</text>`;
+  // 부저(디지털 헤더 옆)
+  const buzC = pinCol(pinName(PINCFG.buz)) || '#f7d94f';
+  s += `<g><title>부저: ${escHtml(pinName(PINCFG.buz))}</title><circle cx="508" cy="312" r="22" fill="#111" stroke="${buzC}" stroke-width="2"/><circle cx="508" cy="312" r="4" fill="#444"/>`
+    + `<text x="508" y="346" text-anchor="middle" fill="${buzC}" font-size="10" font-weight="700" ${F}>부저 ${pinName(PINCFG.buz)}</text></g>`;
+  // 초음파 + R T G 헤더(노란 핀)
+  const us = byId('us').pins;
+  s += `<text x="404" y="372" fill="#4fd1e0" font-size="10.5" font-weight="700" ${F}>초음파 + R T G</text>`;
+  us.forEach((p, i) => {
+    const x = 404 + i * 20;
+    s += `<text x="${x + 7}" y="388" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700" ${M}>${p.t}</text>`
+      + `<g><title>${escHtml(`초음파 ${p.t}: ${p.sig} → 우노 ${p.p}`)}</title><rect x="${x}" y="392" width="14" height="14" rx="2" fill="#f2c94c" stroke="${(users[p.p] || []).length > 1 ? '#f74f4f' : '#8a6d00'}" stroke-width="${(users[p.p] || []).length > 1 ? 2.5 : 1}"/></g>`
+      + `<text x="${x + 7}" y="420" text-anchor="middle" fill="${/^[DA]\d/.test(p.p) ? '#4fd1e0' : '#9fb3cc'}" font-size="9" font-weight="700" ${M}>${p.p}</text>`;
+  });
+  // 센서·서보 헤더(빨강/흰색/검정 핀 줄, 이 수업에서는 쓰지 않음)
+  ['#e03131', '#f1f3f5', '#212529'].forEach((c, r) => { for (let i = 0; i < 4; i++) s += `<rect x="${374 + i * 12}" y="${290 + r * 13}" width="9" height="9" rx="1" fill="${c}" stroke="#555"/>`; });
+  s += `<text x="374" y="345" fill="#9fb3cc" font-size="9" ${F}>센서 헤더</text><text x="374" y="356" fill="#7a8aa0" font-size="9" ${F}>(미사용)</text>`;
+  // 블루투스 헤더(왼쪽 아래)
+  const bt = byId('bt').pins;
+  s += `<text x="374" y="452" fill="#b48cf7" font-size="10.5" font-weight="700" ${F}>bluetooth</text>`;
+  bt.forEach((p, i) => {
+    const x = 374 + i * 22;
+    s += `<text x="${x + 7}" y="468" text-anchor="middle" fill="#e8eaf6" font-size="9" font-weight="700" ${M}>${p.t.replace(/[←→]/, '')}</text>`
+      + `<g><title>${escHtml(`블루투스 ${p.t}: ${p.sig} → 우노 ${p.pl || p.p}`)}</title><rect x="${x}" y="472" width="14" height="14" rx="2" fill="${/^[DA]\d/.test(p.p) ? '#b48cf7' : '#111'}" stroke="#8aa0b8"/></g>`
+      + `<text x="${x + 7}" y="500" text-anchor="middle" fill="${/^[DA]\d/.test(p.p) ? '#b48cf7' : '#9fb3cc'}" font-size="9" font-weight="700" ${M}>${p.p}</text>`;
+    if (i === 0) PIN_XY.BTHDR = { x: x, y: 472 };
+  });
+  s += `<text x="450" y="532" text-anchor="middle" fill="#9fc3ee" font-size="12" font-weight="700" letter-spacing="1" ${F}>L298P 모터 쉴드 (위에서 본 모습)</text>`;
+
+  // 바깥: 모터(위), USB·라인 센서·HC-05(왼쪽), 모터 제어 신호·부저(오른쪽)
+  const mot = (x, y, txt, color) => `<rect x="${x}" y="${y}" width="150" height="36" rx="8" fill="#0d1118" stroke="${color}" stroke-dasharray="4 3"/>`
+    + `<text x="${x + 75}" y="${y + 23}" text-anchor="middle" fill="${color}" font-size="12" font-weight="700" ${F}>${txt}</text>`;
+  s += mot(215, 8, '오른쪽 모터 (MA)', '#4fcf83') + wire(365, 26, 425, 58, '#4fcf83');
+  s += mot(605, 8, '왼쪽 모터 (MB)', '#4f8ef7') + wire(605, 26, 477, 58, '#4f8ef7');
+  s += block(15, 90, 175, 'USB (우노, 쉴드 아래)', byId('usb'), false) + wire(190, 120, 300, 120, '#f7a64f');
+  s += block(15, 300, 175, '라인 센서 (외부)', byId('line'), true);
+  s += block(15, 430, 175, 'HC-05 (외부)', byId('bt'), false) + wire(190, 467, PIN_XY.BTHDR.x, 479, '#b48cf7');
+  s += block(675, 130, 210, 'MOTOR A 제어 · 오른쪽', byId('motorR'), true);
+  s += block(675, 250, 210, 'MOTOR B 제어 · 왼쪽', byId('motorL'), true);
+  s += block(675, 370, 210, '부저 (온보드)', byId('buz'), true);
   $('shieldSvg').innerHTML = s;
 }
 renderPins();
