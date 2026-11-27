@@ -8,8 +8,7 @@
   - 파일을 더블클릭(file://)해서 열어도 됩니다. web/twin.js는 일반 <script>로 불러오고,
     three.js는 vendor/three-r160-bundle.js(로컬)를 쓰므로 인터넷이 없어도 됩니다(파일이 없으면 CDN으로 받음). (python -m http.server 로 열어도 동작)
   - 기본 연결은 "블루투스 BLE"(Web Bluetooth, HM-10/HC-08/AT-09 계열 BLE UART 모듈, Otto와 같은 방식)입니다.
-    클래식 HC-05는 "블루투스 시리얼 (HC-05)"(Web Serial의 블루투스 SPP)로 연결합니다. PC는 페어링 후 생긴 COM 포트,
-    안드로이드(갤럭시 탭 등)는 Chrome 137 이상에서 페어링한 HC-05를 직접 고릅니다(2026-11-27 다시 추가).
+    블루투스는 BLE만 지원합니다(클래식 HC-05의 "블루투스 COM" 방식은 2026-11-26 삭제, 2026-11-27 "블루투스 시리얼 (HC-05)"로 재추가했다가 같은 날 다시 삭제).
   - Web Serial·Web Bluetooth는 Chrome / Edge 에서 동작하며 localhost·file:// 에서도 사용할 수 있습니다.
   - 장치가 없으면 연결 방식에서 "시뮬레이션"을 선택하세요 (가상 로봇이 같은 줄 규약으로 응답).
 -->
@@ -217,7 +216,8 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
 .cmdtable tr[data-cmd]:hover td{background:var(--panel2);}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle;}
 .table-scroll{overflow-x:auto;}
-#unoSvg{width:100%;height:auto;max-width:640px;display:block;margin:0 auto;}
+#shieldSvg{width:100%;height:auto;max-width:900px;display:block;margin:0 auto 4px;}
+.pintable td.pn b{font-size:.85rem;}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.74rem;color:var(--muted);justify-content:center;}
 
 /* 주행 정보 */
@@ -248,7 +248,53 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
   <span class="subtitle">SMARS 웹 콘솔 · 디지털 트윈 · 테스트 콘솔 · L298P 쉴드</span>
 </header>
 
-<!-- 1. 주행 영역: 3D 트윈(왼쪽) + 조작 패널(오른쪽), 900px 미만이면 세로로 쌓음 -->
+<!-- 1. 연결 패널 (학습 페이지 이동 바로 아래) -->
+<section class="card" id="connCard">
+  <h2>연결 <span class="pins" data-pin-ids="usb,bt"></span></h2>
+  <div class="row">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusTxt" class="grow muted">연결 안 됨</span>
+    <select id="modeSel" title="통신 방식">
+      <option value="ble" selected>블루투스 BLE</option>
+      <option value="serial">USB 시리얼</option>
+      <option value="sim">시뮬레이션</option>
+    </select>
+    <select id="baudSel" title="보율">
+      <option value="9600">9600 baud</option>
+      <option value="38400">38400 baud</option>
+      <option value="57600" selected>57600 baud</option>
+      <option value="115200">115200 baud</option>
+    </select>
+    <button class="btn blue" id="btnConnect">연결</button>
+    <button class="btn red" id="btnDisconnect" disabled>연결 해지</button>
+    <button class="btn yellow needs-conn" id="btnPing" disabled>핑</button>
+    <button class="btn needs-conn" id="btnLink" disabled>LINK</button>
+  </div>
+  <div id="modeHelp" class="notice info"></div>
+  <div id="noSerial" class="notice err hidden">
+    이 브라우저는 Web Serial 또는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge에서 여세요. 쓸 수 없는 연결 방식은 목록에서 꺼집니다.
+  </div>
+  <div id="simBox" class="hidden">
+    <div class="slider-row" style="grid-template-columns:130px 1fr 60px;">
+      <span>가상 장애물 거리</span>
+      <input type="range" id="simObst" min="3" max="300" value="80">
+      <span class="v" id="simObstVal">80cm</span>
+    </div>
+    <label class="muted row" style="gap:6px"><input type="checkbox" id="simLine"> 가상 바닥: 검정 라인 위 (라인 센서 원시값 1)</label>
+    <div class="muted">시뮬레이션: 전진하면 장애물이 가까워지고, 제자리 회전하면 멀어집니다. 250cm 초과는 감지 없음(<code>DIST -1</code>)으로 응답합니다.</div>
+  </div>
+  <div class="status-bar">
+    <div class="stat-item"><span class="stat-label">상태</span><span class="stat-val" id="sPort">닫힘</span></div>
+    <div class="stat-item"><span class="stat-label">BAUD</span><span class="stat-val" id="sBaud">—</span></div>
+    <div class="stat-item"><span class="stat-label">경로 (LINK)</span><span class="stat-val" id="sLink">—</span></div>
+    <div class="stat-item"><span class="stat-label">핑 왕복</span><span class="stat-val" id="sPing">—</span></div>
+    <div class="stat-item"><span class="stat-label">송신 / 수신</span><span class="stat-val" id="sCnt">0 / 0</span></div>
+    <div class="stat-item"><span class="stat-label">마지막 수신</span><span class="stat-val" id="sLastRx">—</span></div>
+  </div>
+  <div id="connHint" class="muted">연결하기 전에는 테스트 버튼이 비활성화됩니다. 장치가 없으면 "시뮬레이션"을 선택하세요.</div>
+</section>
+
+<!-- 2. 주행 영역: 3D 트윈(왼쪽) + 조작 패널(오른쪽), 900px 미만이면 세로로 쌓음 -->
 <div class="driverow">
 <div id="twinWrap">
   <div id="twin"></div>
@@ -334,53 +380,6 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
   </details>
 </section>
 
-<!-- 2. 연결 패널 -->
-<section class="card" id="connCard">
-  <h2>연결 <span class="pins" data-pin-ids="usb,bt"></span></h2>
-  <div class="row">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusTxt" class="grow muted">연결 안 됨</span>
-    <select id="modeSel" title="통신 방식">
-      <option value="ble" selected>블루투스 BLE</option>
-      <option value="serial">USB 시리얼</option>
-      <option value="bluetooth">블루투스 시리얼 (HC-05)</option>
-      <option value="sim">시뮬레이션</option>
-    </select>
-    <select id="baudSel" title="보율">
-      <option value="9600">9600 baud</option>
-      <option value="38400">38400 baud</option>
-      <option value="57600" selected>57600 baud</option>
-      <option value="115200">115200 baud</option>
-    </select>
-    <button class="btn blue" id="btnConnect">연결</button>
-    <button class="btn red" id="btnDisconnect" disabled>연결 해지</button>
-    <button class="btn yellow needs-conn" id="btnPing" disabled>핑</button>
-    <button class="btn needs-conn" id="btnLink" disabled>LINK</button>
-  </div>
-  <div id="modeHelp" class="notice info"></div>
-  <div id="noSerial" class="notice err hidden">
-    이 브라우저는 Web Serial 또는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge에서 여세요. 쓸 수 없는 연결 방식은 목록에서 꺼집니다.
-  </div>
-  <div id="simBox" class="hidden">
-    <div class="slider-row" style="grid-template-columns:130px 1fr 60px;">
-      <span>가상 장애물 거리</span>
-      <input type="range" id="simObst" min="3" max="300" value="80">
-      <span class="v" id="simObstVal">80cm</span>
-    </div>
-    <label class="muted row" style="gap:6px"><input type="checkbox" id="simLine"> 가상 바닥: 검정 라인 위 (라인 센서 원시값 1)</label>
-    <div class="muted">시뮬레이션: 전진하면 장애물이 가까워지고, 제자리 회전하면 멀어집니다. 250cm 초과는 감지 없음(<code>DIST -1</code>)으로 응답합니다.</div>
-  </div>
-  <div class="status-bar">
-    <div class="stat-item"><span class="stat-label">상태</span><span class="stat-val" id="sPort">닫힘</span></div>
-    <div class="stat-item"><span class="stat-label">BAUD</span><span class="stat-val" id="sBaud">—</span></div>
-    <div class="stat-item"><span class="stat-label">경로 (LINK)</span><span class="stat-val" id="sLink">—</span></div>
-    <div class="stat-item"><span class="stat-label">핑 왕복</span><span class="stat-val" id="sPing">—</span></div>
-    <div class="stat-item"><span class="stat-label">송신 / 수신</span><span class="stat-val" id="sCnt">0 / 0</span></div>
-    <div class="stat-item"><span class="stat-label">마지막 수신</span><span class="stat-val" id="sLastRx">—</span></div>
-  </div>
-  <div id="connHint" class="muted">연결하기 전에는 테스트 버튼이 비활성화됩니다. 장치가 없으면 "시뮬레이션"을 선택하세요.</div>
-</section>
-
 <!-- 3. 테스트 패널 -->
 <div class="grid">
 
@@ -451,7 +450,7 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
       <input type="text" id="termIn" class="grow needs-conn" placeholder="예: STAT, MOVE F 50, BUZ 1 300" disabled autocomplete="off">
       <button class="btn needs-conn" id="btnTerm" disabled>전송</button>
     </div>
-    <div class="muted">BLE 모듈(HM-10/HC-08/AT-09 계열)은 "블루투스 BLE", 클래식 HC-05(EN 핀·버튼 있음)는 "블루투스 시리얼 (HC-05)"로 연결합니다.</div>
+    <div class="muted">블루투스는 BLE 모듈(HM-10/HC-08/AT-09 계열)로 연결합니다. 클래식 HC-05(SPP)는 Web Bluetooth로 접속할 수 없습니다.</div>
   </section>
 
   <!-- 상태/진단 -->
@@ -502,11 +501,12 @@ table.pintable{width:100%;border-collapse:collapse;font-size:.78rem;}
 <section class="card">
   <h2>핀 연결 (L298P 쉴드 + 아두이노 우노)</h2>
   <div class="notice" id="pinWarn"></div>
-  <svg id="unoSvg" viewBox="0 0 640 250" role="img" aria-label="아두이노 우노 핀헤더 배치도"></svg>
+  <svg id="shieldSvg" viewBox="0 0 900 400" role="img" aria-label="L298P 쉴드 단자와 연결된 아두이노 우노 핀"></svg>
+  <div class="muted" style="text-align:center">L298P 쉴드를 우노 위에 꽂은 상태의 개념도(실제 부품 위치와 다를 수 있음). 각 단자 옆 굵은 글씨가 연결된 <b>아두이노 우노 핀</b>이고, 빨간 테두리는 두 기능이 같은 핀을 쓰는 곳입니다. 단자에 마우스를 올리면 설명이 나옵니다.</div>
   <div class="legend" id="pinLegend"></div>
   <div class="table-scroll">
     <table class="pintable">
-      <thead><tr><th>기능</th><th>부품 단자</th><th>아두이노 핀</th><th>비고</th></tr></thead>
+      <thead><tr><th>기능</th><th>쉴드 단자 · 신호</th><th>우노 핀</th><th>비고</th></tr></thead>
       <tbody id="pinBody"></tbody>
     </table>
   </div>
@@ -566,29 +566,34 @@ let PINCFG = { ...PIN_DEFAULT };
 
 // PINMAP: 표·배지·SVG의 단일 데이터. PINCFG가 바뀔 때마다 buildPinmap으로 다시 만든다
 function buildPinmap(c) {
+  // 쉴드(L298P) 단자 기준 데이터. pins: t=쉴드 단자·신호 이름, p=우노 핀(충돌 검사·배지용), pl=표시용 우노 핀, sig=설명, note=비고
   const P = pinName;
+  const brk = (k, ch) => c[k] < 0
+    ? (k === 'rbrk' ? { t:'BRK', p:'D8', unused:true, sig:`BRK — BRAKE ${ch}`, note:'미사용 — 펌웨어가 구동하지 않음' + (c.echo === 8 ? ' (D8은 초음파 Echo가 씀)' : '') } : null)
+    : { t:'BRK', p:P(c[k]), sig:`BRK — BRAKE ${ch}`, note:'LOW = 구동, HIGH = 브레이크' };
   return [
-    { id:'motorL', func:'왼쪽 모터', color:'#4f8ef7', termText:'DIR / BRAKE / PWM',
-      pinText:`${P(c.ldir)} / ${P(c.lbrk)} / ${P(c.lpwm)}`, note:'쉴드 B채널',
-      pins:[{t:'DIR',p:P(c.ldir)}, ...(c.lbrk < 0 ? [] : [{t:'BRK',p:P(c.lbrk)}]), {t:'PWM',p:P(c.lpwm)}] },
-    { id:'motorR', func:'오른쪽 모터', color:'#4fcf83', termText:'DIR / BRAKE / PWM',
-      pinText:`${P(c.rdir)} / ${c.rbrk < 0 ? 'D8(미사용)' : P(c.rbrk)} / ${P(c.rpwm)}`,
-      note:'쉴드 A채널' + (c.rbrk < 0 && c.echo === 8 ? ', D8은 초음파 Echo와 공유' : ''),
-      pins:[{t:'DIR',p:P(c.rdir)}, c.rbrk < 0 ? {t:'BRK',p:'D8',unused:true} : {t:'BRK',p:P(c.rbrk)}, {t:'PWM',p:P(c.rpwm)}] },
-    { id:'us', func:'초음파', color:'#4fd1e0', termText:'Trig(T) / Echo(R) / 5V(+) / GND(G)',
-      pinText:`${P(c.trig)} / ${P(c.echo)} / 5V / GND`, note:'쉴드 + R T G 헤더 (실물 미검증)',
-      pins:[{t:'T',p:P(c.trig)},{t:'R',p:P(c.echo)},{t:'+',p:'5V'},{t:'G',p:'GND'}] },
-    { id:'buz', func:'부저', color:'#f7d94f', termText:'신호 / GND',
-      pinText:`${P(c.buz)} / GND`, note:'기본값 D4 (능동형)',
-      pins:[{t:'SIG',p:P(c.buz)},{t:'GND',p:'GND'}] },
-    { id:'line', func:'적외선 라인 센서', color:'#e8eaf6', termText:'DO / VCC / GND',
-      pinText:`${P(c.line)} / 5V / GND`, note:'디지털 입력 (fw=3 이상), 1=검정 기본 · 반전 가능',
-      pins:[{t:'DO',p:P(c.line)},{t:'+',p:'5V'},{t:'G',p:'GND'}] },
-    { id:'bt', func:'블루투스 HC-05', color:'#b48cf7', termText:'TXD→ / RXD←', pinText:'A1(아두이노 RX) ← HC-05 TXD / A0(아두이노 TX) → HC-05 RXD',
-      note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)',
-      pins:[{t:'TXD→',p:'A1'},{t:'RXD←',p:'A0'}] },   // 모듈 단자 기준 표기 (TXD→A1, RXD←A0)
-    { id:'usb', func:'USB', color:'#f7a64f', termText:'—', pinText:'D0 / D1', note:'업로드·시리얼 모니터와 공유 · 고정',
-      pins:[{t:'RX',p:'D0'},{t:'TX',p:'D1'}] },
+    { id:'motorL', func:'왼쪽 모터', where:'MOTOR B (B+/B− 나사 단자)', color:'#4f8ef7',
+      pins:[{ t:'DIR', p:P(c.ldir), sig:'DIR B — 회전 방향', note:'HIGH 전진 / LOW 후진' },
+            brk('lbrk', 'B'),
+            { t:'PWM', p:P(c.lpwm), sig:'PWM B — 속도', note:'analogWrite 0~255' }].filter(Boolean) },
+    { id:'motorR', func:'오른쪽 모터', where:'MOTOR A (A+/A− 나사 단자)', color:'#4fcf83',
+      pins:[{ t:'DIR', p:P(c.rdir), sig:'DIR A — 회전 방향', note:'HIGH 전진 / LOW 후진' },
+            brk('rbrk', 'A'),
+            { t:'PWM', p:P(c.rpwm), sig:'PWM A — 속도', note:'analogWrite 0~255' }].filter(Boolean) },
+    { id:'us', func:'초음파 HC-SR04', where:'쉴드 + R T G 헤더 (실물 미검증)', color:'#4fd1e0',
+      pins:[{ t:'+', p:'5V', sig:'+ — 5V 전원' }, { t:'R', p:P(c.echo), sig:'R — Echo(되돌아온 신호)', note:'입력' },
+            { t:'T', p:P(c.trig), sig:'T — Trig(발사 신호)', note:'출력' }, { t:'G', p:'GND', sig:'G — GND' }] },
+    { id:'buz', func:'부저 (능동형)', where:'쉴드 온보드 부저 (추정)', color:'#f7d94f',
+      pins:[{ t:'SIG', p:P(c.buz), sig:'부저 신호', note:'기본값 D4, HIGH = 소리' }] },
+    { id:'line', func:'적외선 라인 센서', where:'외부 모듈 → 쉴드 위 우노 핀 헤더', color:'#e8eaf6',
+      pins:[{ t:'DO', p:P(c.line), sig:'DO — 디지털 출력', note:'fw=3 이상, 1 = 검정 기본 · 반전 가능' },
+            { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
+    { id:'bt', func:'블루투스 HC-05', where:'외부 모듈 → 쉴드 위 A0·A1 헤더', color:'#b48cf7',
+      pins:[{ t:'RXD←', p:'A1', pl:'A1 (아두이노 TX)', sig:'HC-05 RXD(받는 단자) ← 아두이노 TX', note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)' },
+            { t:'TXD→', p:'A0', pl:'A0 (아두이노 RX)', sig:'HC-05 TXD(보내는 단자) → 아두이노 RX', note:'고정 · 9600bps' },
+            { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
+    { id:'usb', func:'USB', where:'우노 USB 단자 (쉴드는 사용 안 함)', color:'#f7a64f',
+      pins:[{ t:'RX', p:'D0', sig:'아두이노 수신', note:'업로드·시리얼 모니터와 공유 · 고정' }, { t:'TX', p:'D1', sig:'아두이노 송신', note:'57600bps' }] },
   ];
 }
 let PINMAP = buildPinmap(PINCFG);
@@ -604,12 +609,13 @@ function pinWarnText(c) {
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const nowStr = () => new Date().toLocaleTimeString('ko', { hour12:false });
+const escHtml = x => String(x).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[ch]);
 
 function renderPins() {
-  // 표
-  $('pinBody').innerHTML = PINMAP.map(e =>
-    `<tr><td><span class="swatch" style="background:${e.color}"></span>${e.func}</td>`
-    + `<td>${e.termText}</td><td class="pn">${e.pinText}</td><td>${e.note}</td></tr>`).join('');
+  // 표: 쉴드 단자 한 줄씩
+  $('pinBody').innerHTML = PINMAP.map(e => e.pins.map((p, i) =>
+    '<tr>' + (i === 0 ? `<td rowspan="${e.pins.length}"><span class="swatch" style="background:${e.color}"></span>${e.func}<div class="muted">${e.where}</div></td>` : '')
+    + `<td>${(p.sig || '').startsWith(p.t) ? `<b>${p.t}</b>${p.sig.slice(p.t.length)}` : `<b>${p.t}</b> ${p.sig || ''}`}</td><td class="pn"><b>${p.pl || p.p}</b>${p.unused ? ' (미사용)' : ''}</td><td>${p.note || ''}</td></tr>`).join('')).join('');
   $('pinWarn').textContent = pinWarnText(PINCFG);
   // 배지
   document.querySelectorAll('.pins[data-pin-ids]').forEach(el => {
@@ -622,40 +628,62 @@ function renderPins() {
   });
   // 범례
   $('pinLegend').innerHTML = PINMAP.map(e => `<span><span class="swatch" style="background:${e.color}"></span>${e.func}</span>`).join('')
-    + `<span><span class="swatch" style="background:#f74f4f"></span>공유 핀(충돌 주의)</span>`;
-  // 우노 핀헤더 SVG
+    + `<span><span class="swatch" style="background:#0d1118;border:2px solid #f74f4f"></span>공유 핀(충돌 주의)</span>`;
+
+  // L298P 쉴드 개념도: 쉴드 단자마다 연결된 우노 핀을 표시
   const users = {};
-  for (const e of PINMAP) for (const p of e.pins) {
-    (users[p.p] ||= []).push({ e, p });
-  }
-  const top = ['SCL','SDA','AREF','GND','D13','D12','D11','D10','D9','D8',null,'D7','D6','D5','D4','D3','D2','D1','D0'];
-  const bot = ['IOREF','RESET','3.3V','5V','GND','GND','VIN',null,'A0','A1','A2','A3','A4','A5'];
-  const NS = 'http://www.w3.org/2000/svg';
-  let s = `<rect x="10" y="10" width="620" height="230" rx="14" fill="#123a5a" stroke="#2a5d86"/>`
-    + `<text x="320" y="128" text-anchor="middle" fill="#7fb2d9" font-size="18" font-weight="700" font-family="Segoe UI,sans-serif">ARDUINO UNO + L298P</text>`
-    + `<text x="320" y="148" text-anchor="middle" fill="#5d8db5" font-size="11" font-family="Segoe UI,sans-serif">사용 중인 핀은 색으로 표시</text>`
-    + `<rect x="0" y="70" width="40" height="44" rx="4" fill="#9aa3ad"/><text x="20" y="96" text-anchor="middle" font-size="10" fill="#222">USB</text>`;
-  const pinBox = (label, x, y, labelBelow) => {
-    const u = (label === 'GND' && !pinBox.gndUsed) ? (users.GND || []) : (label === 'GND' ? [] : (users[label] || []));
-    if (label === 'GND' && u.length) pinBox.gndUsed = true;
-    const active = u.filter(z => !z.p.unused);
-    let fill = '#0d1118', stroke = '#3a4a5c';
-    if (active.length > 1 && label !== 'GND' && label !== '5V') { fill = '#f74f4f'; stroke = '#fff'; }
-    else if (u.length > 1 && label.startsWith('D')) { fill = active[0]?.e.color || '#555'; stroke = '#f74f4f'; }
-    else if (active.length) { fill = active[0].e.color; stroke = '#fff'; }
-    const title = u.length ? u.map(z => `${z.e.func} ${z.p.t}${z.p.unused ? '(미사용)' : ''}`).join(', ') : '미사용';
-    const ty = labelBelow ? y + 32 : y - 8;
-    return `<g><title>${label}: ${title}</title>`
-      + `<rect x="${x}" y="${y}" width="22" height="22" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${u.length > 1 && label.startsWith('D') ? 3 : 1.2}"/>`
-      + `<circle cx="${x+11}" cy="${y+11}" r="4" fill="#000" opacity=".55"/>`
-      + `<text x="${x+11}" y="${ty}" text-anchor="middle" font-size="10" fill="${active.length ? '#e8eaf6' : '#7a8aa0'}" font-family="Consolas,monospace">${label}</text></g>`;
+  for (const e of PINMAP) for (const p of e.pins) if (/^[DA]\d/.test(p.p)) (users[p.p] ||= []).push(p);
+  const byId = id => PINMAP.find(e => e.id === id);
+  const F = 'font-family="Segoe UI,sans-serif"', M = 'font-family="Consolas,monospace"';
+  const block = (x, y, w, title, e, sub) => {
+    const color = e ? e.color : '#9aa3ad', rows = e ? e.pins : sub;
+    const h = 30 + rows.length * 22;
+    let o = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#0d1118" fill-opacity=".72" stroke="${color}" stroke-width="1.5"/>`
+      + `<text x="${x + 10}" y="${y + 19}" fill="${color}" font-size="12.5" font-weight="700" ${F}>${title}</text>`;
+    rows.forEach((p, i) => {
+      const ry = y + 30 + i * 22;
+      const u = users[p.p] || [], active = u.filter(z => !z.unused);
+      const shared = u.length > 1, clash = active.length > 1;
+      const pinTxt = p.pl ? p.pl.replace('아두이노 ', '') : p.p;
+      const pw = Math.max(34, pinTxt.length * 7.2 + 12);
+      const pillFill = clash ? '#f74f4f' : p.unused ? '#2a2d3e' : /^[DA]\d/.test(p.p) ? color : p.p === '5V' ? '#f783ac' : '#5c6370';
+      const tip = `${(e && e.func) || title} ${p.t}: ${p.sig || ''} → 우노 ${p.pl || p.p}${p.unused ? ' (미사용)' : ''}${shared ? ' · 다른 기능과 같은 핀' : ''}`;
+      o += `<g><title>${escHtml(tip)}</title>`
+        + `<rect x="${x + 10}" y="${ry}" width="14" height="14" rx="2" fill="${p.unused ? '#2a2d3e' : color}" stroke="#fff" stroke-opacity=".5"/>`
+        + `<circle cx="${x + 17}" cy="${ry + 7}" r="3" fill="#000" opacity=".55"/>`
+        + `<text x="${x + 30}" y="${ry + 11.5}" fill="${p.unused ? '#7a8aa0' : '#e8eaf6'}" font-size="11.5" ${M}>${escHtml(p.t)}</text>`
+        + `<rect x="${x + w - pw - 8}" y="${ry - 1}" width="${pw}" height="16" rx="8" fill="${pillFill}" stroke="${shared ? '#f74f4f' : 'none'}" stroke-width="2.5"/>`
+        + `<text x="${x + w - 8 - pw / 2}" y="${ry + 11}" text-anchor="middle" fill="${p.unused ? '#9aa3ad' : '#0b0f14'}" font-size="11" font-weight="700" ${M}>${escHtml(pinTxt)}</text></g>`;
+    });
+    return o;
   };
-  pinBox.gndUsed = false;
-  let x = 96;
-  for (const l of top) { if (l === null) { x += 12; continue; } s += pinBox(l, x, 34, false); x += 27; }
-  x = 160;
-  for (const l of bot) { if (l === null) { x += 24; continue; } s += pinBox(l, x, 190, true); x += 27; }
-  $('unoSvg').innerHTML = s;
+  const wire = (x1, y1, x2, y2, color) => `<path d="M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="5 4" opacity=".8"/>`;
+  const term = (x, y, labels, color) => labels.map((l, i) => `<rect x="${x}" y="${y + i * 20}" width="18" height="18" rx="2" fill="#2f9e44" stroke="#1b5e20"/><circle cx="${x + 9}" cy="${y + 9 + i * 20}" r="5" fill="#c9ced6" stroke="#555"/>`).join('')
+    + `<text x="${x + 9}" y="${y - 6}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="700" ${M}>${labels.join('/')}</text>`;
+  const mot = (x, y, txt, color) => `<rect x="${x}" y="${y}" width="140" height="44" rx="8" fill="#0d1118" stroke="${color}" stroke-dasharray="4 3"/>`
+    + `<text x="${x + 70}" y="${y + 27}" text-anchor="middle" fill="${color}" font-size="12.5" font-weight="700" ${F}>${txt}</text>`;
+
+  let s = `<rect x="180" y="40" width="540" height="330" rx="14" fill="#1c3f6e" stroke="#3b6aa0" stroke-width="1.5"/>`
+    + `<text x="450" y="358" text-anchor="middle" fill="#7fb2d9" font-size="13" font-weight="700" letter-spacing="1" ${F}>L298P 모터 쉴드 (아두이노 우노 위에 꽂음)</text>`;
+  // L298P 칩
+  s += `<rect x="385" y="70" width="130" height="80" rx="6" fill="#111" stroke="#666"/>`
+    + Array.from({ length: 7 }, (_, i) => `<rect x="${398 + i * 17}" y="58" width="6" height="12" fill="#888"/>`).join('')
+    + `<text x="450" y="108" text-anchor="middle" fill="#e8eaf6" font-size="17" font-weight="700" ${F}>L298P</text>`
+    + `<text x="450" y="128" text-anchor="middle" fill="#8a93a6" font-size="10.5" ${F}>모터 드라이버 (A·B 2채널)</text>`;
+  // 모터 제어 블록과 나사 단자
+  s += block(195, 60, 175, 'MOTOR B · 왼쪽', byId('motorL')) + block(530, 60, 175, 'MOTOR A · 오른쪽', byId('motorR'));
+  s += term(184, 170, ['B+', 'B−'], '#4f8ef7') + term(698, 170, ['A+', 'A−'], '#4fcf83');
+  // 부저, + R T G 헤더, 외부 전원 단자
+  s += block(210, 240, 150, '부저 (온보드)', byId('buz'));
+  s += block(375, 180, 150, '초음파 헤더 + R T G', byId('us'));
+  s += block(545, 240, 150, '외부 전원 단자', null, [{ t:'+', p:'VIN', sig:'모터 전원(배터리 +)' }, { t:'−', p:'GND', sig:'배터리 −' }]);
+  // 바깥: 모터, USB, HC-05, 라인 센서
+  s += mot(15, 168, '왼쪽 모터 (DC)', '#4f8ef7') + wire(155, 190, 184, 189, '#4f8ef7');
+  s += mot(745, 168, '오른쪽 모터 (DC)', '#4fcf83') + wire(716, 189, 745, 190, '#4fcf83');
+  s += block(15, 270, 140, 'USB (우노)', byId('usb')) + wire(155, 300, 180, 300, '#f7a64f');
+  s += block(735, 20, 160, 'HC-05 (외부)', byId('bt')) + wire(735, 70, 720, 70, '#b48cf7');
+  s += block(735, 268, 160, '라인 센서 (외부)', byId('line')) + wire(735, 310, 720, 310, '#e8eaf6');
+  $('shieldSvg').innerHTML = s;
 }
 renderPins();
 
@@ -795,7 +823,7 @@ class BleTransport {
         ? { acceptAllDevices: true, optionalServices }
         : { filters: [{ namePrefix: 'SMARS' }, { namePrefix: 'smars' }, { namePrefix: 'Smars' }, { services: [0xffe0] }, { services: [0xfff0] }], optionalServices });
     } catch (e) {
-      if (e.name === 'NotFoundError') throw new Error('기기를 고르지 않았거나 찾지 못했습니다. 로봇 전원을 켜고 목록에서 로봇 이름(SMARS01 등)을 고르세요. 목록에 없으면 "모든 기기 보기"를 켜 보세요. 클래식 HC-05 모듈은 BLE 목록에 나오지 않으니 "블루투스 시리얼 (HC-05)"을 쓰세요.');
+      if (e.name === 'NotFoundError') throw new Error('기기를 고르지 않았거나 찾지 못했습니다. 로봇 전원을 켜고 목록에서 로봇 이름(SMARS01 등)을 고르세요. 목록에 없으면 "모든 기기 보기"를 켜 보세요. 클래식 HC-05 모듈은 BLE 목록에 나오지 않습니다(BLE 모듈로 교체 필요).');
       throw e;
     }
     this.device.addEventListener('gattserverdisconnected', this._gattLost);
@@ -995,7 +1023,6 @@ class SimRobot {
 // ═══════════════════════════════════════════════════════════════════════════
 const hasSerial = 'serial' in navigator;
 const hasBle = 'bluetooth' in navigator;
-const SPP_UUID = '00001101-0000-1000-8000-00805f9b34fb';   // 블루투스 Serial Port Profile(클래식 HC-05)
 let transport = null, port = null, connMode = null, busy = false, handshaking = false;
 let txCount = 0, rxCount = 0, txChain = Promise.resolve();
 let lastRxLine = '';
@@ -1003,7 +1030,6 @@ let lastRxLine = '';
 const MODE_HELP = {
   ble: '로봇의 BLE 블루투스 모듈(HM-10/HC-08/AT-09 계열)에 브라우저가 직접 연결합니다. 윈도우 페어링·COM 포트가 필요 없습니다. "연결"을 누르고 목록에서 로봇 이름(예: SMARS01)을 고르세요. <label><input type="checkbox" id="bleAll"> 모든 기기 보기</label>',
   serial: 'USB 케이블로 연결된 아두이노의 COM 포트를 고르세요. 기본 57600 baud. 시리얼 모니터(아두이노 IDE)가 열려 있으면 포트를 열 수 없습니다.',
-  bluetooth: '클래식 HC-05(EN 핀·버튼 있음)를 먼저 기기 설정에서 페어링하세요(PIN 1234 또는 0000). PC: 페어링 후 생긴 "블루투스 COM 포트"(보통 송신용)를 고릅니다. 안드로이드(갤럭시 탭): Chrome 137 이상에서 목록에 나오는 HC-05 이름을 고릅니다. 기본 9600 baud.',
   sim: '하드웨어 없이 가상 로봇에 연결합니다. 실제 장치와 같은 줄 규약과 같은 파서를 사용합니다.',
 };
 function updateModeUI() {
@@ -1012,7 +1038,6 @@ function updateModeUI() {
     + (location.protocol === 'file:' ? ' · 3D 트윈이 보이지 않으면 vendor/three-r160-bundle.js와 web/twin.js 위치를 확인하세요.' : '');
   $('baudSel').disabled = m === 'sim' || m === 'ble' || !!transport;
   if (m === 'serial') $('baudSel').value = '57600';
-  if (m === 'bluetooth') $('baudSel').value = '9600';
   $('simBox').classList.toggle('hidden', m !== 'sim');
 }
 $('modeSel').onchange = updateModeUI;
@@ -1020,7 +1045,7 @@ if (!hasSerial || !hasBle) {
   $('noSerial').classList.remove('hidden');
   for (const o of $('modeSel').options) {
     if (o.value === 'ble' && !hasBle) o.disabled = true;
-    if ((o.value === 'serial' || o.value === 'bluetooth') && !hasSerial) o.disabled = true;
+    if (o.value === 'serial' && !hasSerial) o.disabled = true;
   }
   if ($('modeSel').selectedOptions[0]?.disabled) $('modeSel').value = hasSerial ? 'serial' : 'sim';
 }
@@ -1038,7 +1063,7 @@ function setConnUI() {
   $('joyBase').classList.toggle('off', !on || handshaking);
   const dot = $('statusDot');
   dot.className = 'status-dot' + (busy ? ' checking' : on ? (connMode === 'sim' ? ' sim' : ' connected') : '');
-  const label = { ble:'블루투스 BLE', serial:'USB 시리얼', bluetooth:'블루투스 시리얼', sim:'시뮬레이션' }[connMode] || '';
+  const label = { ble:'블루투스 BLE', serial:'USB 시리얼', sim:'시뮬레이션' }[connMode] || '';
   $('statusTxt').textContent = busy ? '처리 중…' : on ? `연결됨 — ${label}` : '연결 안 됨';
   $('sPort').textContent = on ? '열림' : '닫힘';
   $('sPort').className = 'stat-val ' + (on ? 'ok' : 'err');
@@ -1071,13 +1096,11 @@ $('btnConnect').onclick = async () => {
     } else {
       if (!hasSerial) throw new Error('Web Serial 미지원 브라우저');
       const baud = parseInt($('baudSel').value, 10);
-      // 블루투스 시리얼: SPP(RFCOMM) 서비스를 허용해야 안드로이드 Chrome(137+) 목록에 페어링한 HC-05가 나온다.
-      // 데스크톱에서는 같은 옵션으로 COM 포트와 블루투스 기기를 함께 보여 준다.
-      port = await navigator.serial.requestPort(mode === 'bluetooth' ? { allowedBluetoothServiceClassIds: [SPP_UUID] } : {});
+      port = await navigator.serial.requestPort();
       const t = new SerialTransport(port, handleLine, reason => onDeviceLost(reason));
       await t.open(baud);
       transport = t;
-      log(`포트 열림 (${mode === 'bluetooth' ? '블루투스 시리얼' : 'USB'}, ${baud} baud)`, 'sys');
+      log(`포트 열림 (USB, ${baud} baud)`, 'sys');
     }
     connMode = mode;
     txCount = rxCount = 0; txChain = Promise.resolve();
@@ -1232,7 +1255,7 @@ function handleLine(raw) {
     case 'LINK': {
       const via = sub;
       $('sLink').textContent = via || '?';
-      const expect = (connMode === 'bluetooth' || connMode === 'ble') ? 'BT' : connMode === 'serial' ? 'USB' : null;
+      const expect = connMode === 'ble' ? 'BT' : connMode === 'serial' ? 'USB' : null;
       const mismatch = expect && via && via !== expect;
       $('sLink').className = 'stat-val ' + (mismatch ? 'warn' : 'ok');
       if (mismatch) log(`경로 불일치: 선택한 방식은 ${expect}인데 펌웨어는 ${via}로 받았다고 응답했습니다.`, 'err');
