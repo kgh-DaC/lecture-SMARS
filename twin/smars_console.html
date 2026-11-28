@@ -588,8 +588,8 @@ function buildPinmap(c) {
     { id:'line', func:'적외선 라인 센서', where:'외부 모듈 → 쉴드 위 우노 핀 헤더', color:'#e8eaf6',
       pins:[{ t:'DO', p:P(c.line), sig:'DO — 디지털 출력', note:'fw=3 이상, 1 = 검정 기본 · 반전 가능' },
             { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
-    { id:'bt', func:'블루투스 HC-05', where:'외부 모듈 → 쉴드 bluetooth 헤더 (A0·A1)', color:'#b48cf7',
-      pins:[{ t:'RXD←', p:'A0', pl:'A0 (아두이노 TX)', sig:'HC-05 RXD(받는 단자) ← 아두이노 TX', note:'HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)' },
+    { id:'bt', func:'블루투스 HC-05', where:'외부 모듈 → 쉴드 아날로그 헤더 A0·A1에 직접 연결 (쉴드 bluetooth 헤더는 D0·D1이라 미사용)', color:'#b48cf7',
+      pins:[{ t:'RXD←', p:'A0', pl:'A0 (아두이노 TX)', sig:'HC-05 RXD(받는 단자) ← 아두이노 TX', note:'쉴드의 bluetooth 헤더(RXD·TXD·+·G)는 D0·D1(RXD=D0, TXD=D1)에 이어져 있어 USB 업로드·시리얼 모니터와 겹치므로 사용하지 않고, HC-05를 A0·A1에 직접 연결합니다 · HC-05 RXD에는 분압(5V→3.3V) 권장 · 고정(변경은 펌웨어 재업로드)' },
             { t:'TXD→', p:'A1', pl:'A1 (아두이노 RX)', sig:'HC-05 TXD(보내는 단자) → 아두이노 RX', note:'고정 · 9600bps' },
             { t:'+', p:'5V', sig:'— VCC 5V' }, { t:'G', p:'GND', sig:'— GND' }] },
     { id:'usb', func:'USB', where:'우노 USB 단자 (쉴드는 사용 안 함)', color:'#f7a64f',
@@ -719,15 +719,14 @@ function renderPins() {
   // 센서·서보 헤더(빨강/흰색/검정 핀 줄, 이 수업에서는 쓰지 않음)
   ['#e03131', '#f1f3f5', '#212529'].forEach((c, r) => { for (let i = 0; i < 4; i++) s += `<rect x="${374 + i * 12}" y="${290 + r * 13}" width="9" height="9" rx="1" fill="${c}" stroke="#555"/>`; });
   s += `<text x="374" y="345" fill="#9fb3cc" font-size="9" ${F}>센서 헤더</text><text x="374" y="356" fill="#7a8aa0" font-size="9" ${F}>(미사용)</text>`;
-  // 블루투스 헤더(왼쪽 아래)
-  const bt = byId('bt').pins;
-  s += `<text x="374" y="452" fill="#b48cf7" font-size="10.5" font-weight="700" ${F}>bluetooth</text>`;
-  bt.forEach((p, i) => {
+  // 쉴드 bluetooth 헤더(왼쪽 아래): 쉴드에서 D0·D1(하드웨어 시리얼)과 이어져 USB 업로드와 겹치므로 사용하지 않는다.
+  // HC-05는 이 헤더 대신 아날로그 헤더 A0·A1에 직접 연결한다(SoftwareSerial).
+  s += `<text x="374" y="452" fill="#7a8aa0" font-size="10.5" font-weight="700" ${F}>bluetooth (미사용)</text>`;
+  [['RXD', 'D0'], ['TXD', 'D1'], ['+', '5V'], ['G', 'GND']].forEach(([t, p], i) => {
     const x = 374 + i * 22;
-    s += `<text x="${x + 7}" y="468" text-anchor="middle" fill="#e8eaf6" font-size="9" font-weight="700" ${M}>${p.t.replace(/[←→]/, '')}</text>`
-      + `<g><title>${escHtml(`블루투스 ${p.t}: ${p.sig} → 우노 ${p.pl || p.p}`)}</title><rect x="${x}" y="472" width="14" height="14" rx="2" fill="${/^[DA]\d/.test(p.p) ? '#b48cf7' : '#111'}" stroke="#8aa0b8"/></g>`
-      + `<text x="${x + 7}" y="500" text-anchor="middle" fill="${/^[DA]\d/.test(p.p) ? '#b48cf7' : '#9fb3cc'}" font-size="9" font-weight="700" ${M}>${p.p}</text>`;
-    if (i === 0) PIN_XY.BTHDR = { x: x, y: 472 };
+    s += `<text x="${x + 7}" y="468" text-anchor="middle" fill="#9fb3cc" font-size="9" font-weight="700" ${M}>${t}</text>`
+      + `<g><title>${escHtml(`쉴드 bluetooth 헤더 ${t} → 우노 ${p}. D0·D1은 USB 업로드·시리얼 모니터와 겹쳐 사용하지 않음(HC-05는 A0·A1에 연결)`)}</title><rect x="${x}" y="472" width="14" height="14" rx="2" fill="#2a2d3e" stroke="#5c6370" stroke-dasharray="2 2"/></g>`
+      + `<text x="${x + 7}" y="500" text-anchor="middle" fill="#7a8aa0" font-size="9" font-weight="700" ${M}>${p}</text>`;
   });
   s += `<text x="450" y="532" text-anchor="middle" fill="#9fc3ee" font-size="12" font-weight="700" letter-spacing="1" ${F}>L298P 모터 쉴드 (위에서 본 모습)</text>`;
 
@@ -737,8 +736,8 @@ function renderPins() {
   s += mot(215, 8, '오른쪽 모터 (MA)', '#4fcf83') + wire(365, 26, 425, 58, '#4fcf83');
   s += mot(605, 8, '왼쪽 모터 (MB)', '#4f8ef7') + wire(605, 26, 477, 58, '#4f8ef7');
   s += block(15, 90, 175, 'USB (우노, 쉴드 아래)', byId('usb'), false) + wire(190, 120, 300, 120, '#f7a64f');
-  s += block(15, 300, 175, '라인 센서 (외부)', byId('line'), true);
-  s += block(15, 430, 175, 'HC-05 (외부)', byId('bt'), false) + wire(190, 467, PIN_XY.BTHDR.x, 479, '#b48cf7');
+  s += block(15, 200, 175, 'HC-05 (외부)', byId('bt'), true);      // A0·A1(아날로그 헤더)에 직접 연결
+  s += block(15, 340, 175, '라인 센서 (외부)', byId('line'), true);
   s += block(675, 130, 210, 'MOTOR A 제어 · 오른쪽', byId('motorR'), true);
   s += block(675, 250, 210, 'MOTOR B 제어 · 왼쪽', byId('motorL'), true);
   s += block(675, 370, 210, '부저 (온보드)', byId('buz'), true);

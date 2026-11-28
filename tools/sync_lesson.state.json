@@ -3,7 +3,7 @@
   "files": {
     "@tools/sync_lesson.mjs": "274edfcc8307e7b5",
     "a1/a1.css": "fce9a072acdafa59",
-    "a1/a1.js": "a04d326249a80fa0",
+    "a1/a1.js": "1d4ec704273f64d8",
     "examples/m1_blink/m1_blink.ino": "192c639113ab8e6a",
     "examples/m2_motor/m2_motor.ino": "1c9b6056553911ed",
     "examples/m3_buzzer/m3_buzzer.ino": "803668476ba7dfe6",
